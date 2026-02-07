@@ -18,6 +18,15 @@
 - [x] Sanity sliding scales (jump velocity + deceleration interpolate smoothly across sanity 0-12)
 - [x] Sanity Gauntlet map (40x25, platforms require progressively lower sanity to reach)
 - [x] Collision fix for 1.5-tile zombie height (ground detection uses feet pixel)
+- [x] Level generator (procedural physics-aware platform generation)
+  - Seeded PRNG (splitmix32) for reproducible layouts
+  - Section-based terrain: 5 archetypes (canyon, tower, open, corridor, staircase)
+  - Physics envelope from actual kinematics (v²/2g for peak height)
+  - BFS reachability validation removes unreachable platforms
+  - Platform personality: mixed sizes (tiny/medium/wide)
+  - Ground variation per section, landmarks (pillars, floaters, overhangs)
+  - UI: Width, Height, Density, Min Sanity, Seed sliders + Generate/Random/Gauntlet buttons
+  - Gauntlet preset restores the original handcoded map
 
 ## Playtesting Tasks
 - [ ] Playtest Lucid tier — does it feel safe and precise?
@@ -35,11 +44,7 @@
 - [ ] Test platform edge collision behavior
 
 ## Upcoming
-- [ ] Level generator (procedural physics-aware platform generation with tunable parameters)
-  - Seeded PRNG for reproducible layouts
-  - Density, min-sanity, width/height sliders
-  - BFS reachability validation
-  - Replaces need for hand-building test maps
+- (nothing currently planned)
 
 ## DO NOT BUILD
 - Enemies, combat, AI, eating mechanic

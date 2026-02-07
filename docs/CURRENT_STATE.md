@@ -1,6 +1,6 @@
 # Zombie Movement Toy — Current State
 
-**Version:** Sanity Gauntlet build
+**Version:** Level Generator build
 **Last updated:** Feb 2026
 
 ## Overview
@@ -42,10 +42,28 @@ Sanity 0-12, controlled by slider. Tiers:
 - World boundary clamping
 - No clipping through platforms
 
+### Level Generator
+Procedural physics-aware platform generation in the tuning panel. Calculates jump envelope from actual physics constants (JUMP_VELOCITY, GRAVITY, FERAL_JUMP_MULT) to place platforms that are reachable at the specified minimum sanity level.
+
+- **Seeded PRNG** (splitmix32): reproducible layouts from seed
+- **Section-based terrain**: 3-5 sections per level, each a random archetype (no back-to-back repeats, at least one tower or canyon guaranteed):
+  - **Canyon** — ground gap with bridge platform above, upper reward platform
+  - **Tower** — vertical stack of alternating offset platforms, side approach
+  - **Open** — partial ground with gaps/raised bumps, scattered platforms at various heights
+  - **Corridor** — low ceiling with gaps, cramped lower path vs risk/reward upper path
+  - **Staircase** — ascending or descending chain of step platforms
+- **Platform personality**: mixed sizes (25% tiny 1-2 tiles, 30% medium 3-4, 45% wide 5-7+)
+- **Ground variation**: per-section ground treatment (gaps, partial, raised), section boundaries get 2-tile ground for walkability
+- **Landmarks**: 1-2 per level (tall pillars, single floating tiles, overhangs)
+- **BFS reachability validation**: removes any platform unreachable via the physics envelope
+- **Gauntlet preset**: one-click restore of the hardcoded Sanity Gauntlet map
+
+Generator UI sliders: Width (20-60), Height (15-35), Density (0.1-0.9), Min Sanity (1-12), Seed
+
 ### UI
 - **Sanity slider**: top bar, range 0-12, real-time, shows value + tier name
 - **Debug panel**: top-right overlay, monospace, shows velocity/grounded/coyote/buffer/air control/drift
-- **Tuning panel**: collapsible left panel with sliders for all movement constants
+- **Tuning panel**: collapsible left panel with sliders for all movement constants + level generator controls
 - **Gone overlay**: "MIND LOST" text when sanity = 0
 - **Controls hint**: bottom text showing key bindings
 
@@ -87,8 +105,8 @@ Tier layout:
 | TILE_SIZE | 32 | px |
 | FERAL_JUMP_MULT | 1.6 | multiplier (sanity-interpolated) |
 | FERAL_DECEL_MULT | 0.5 | multiplier (sanity-interpolated) |
-| MAP_COLS | 40 | tiles |
-| MAP_ROWS | 25 | tiles |
+| MAP_COLS | 40 (default) | tiles (mutable, 20-60) |
+| MAP_ROWS | 25 (default) | tiles (mutable, 15-35) |
 
 ## File Structure
 

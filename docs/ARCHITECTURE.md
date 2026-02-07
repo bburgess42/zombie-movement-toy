@@ -1,6 +1,6 @@
 # Zombie Movement Toy — Architecture
 
-**Last updated:** Feb 2026 — Sanity Gauntlet build
+**Last updated:** Feb 2026 — Level Generator build
 
 ## Design Philosophy
 
@@ -12,22 +12,23 @@ The goal is to answer one question: **Does this feel like the right foundation f
 
 Everything lives in `index.html`. The code is organized into clearly separated sections in this order:
 
-1. **Styles** — CSS for UI overlay elements
+1. **Styles** — CSS for UI overlay elements (including generator button/input styles)
 2. **Tunable Constants** — All movement parameters (the tuning panel reads/writes these)
-3. **Tile Map** — Hardcoded test level as ASCII strings
-4. **Game State** — Mutable runtime state (zombie position, velocity, input, drift)
-5. **Sanity Tier Helpers** — Functions to get tier-adjusted movement values
-6. **Input Handling** — Keyboard event listeners, key state tracking
-7. **Physics Update** — Core movement loop (gravity, accel, friction, clamp, position)
-8. **Collision Detection** — AABB vs tile grid (Y-first resolution)
-9. **Jump System** — Coyote time, jump buffer, variable height
-10. **Input Drift** — Random impulses at Slipping/Feral tiers
-11. **Rendering** — Canvas drawing (tiles, zombie, direction indicator)
-12. **UI — Debug Panel** — Real-time movement diagnostics
-13. **UI — Sanity Slider** — Primary testing tool
-14. **UI — Tuning Panel** — Live constant adjustment
-15. **Game Loop** — requestAnimationFrame with dt capping
-16. **Initialization** — Setup and loop start
+3. **Tile Map** — Preset Gauntlet map as `PRESET_GAUNTLET`, mutable `MAP_DATA`/`tileMap`
+4. **Level Generator** — Seeded PRNG, physics envelope, section-based generation, BFS validation
+5. **Game State** — Mutable runtime state (zombie position, velocity, input, drift)
+6. **Sanity Tier Helpers** — Functions to get tier-adjusted movement values
+7. **Input Handling** — Keyboard event listeners, key state tracking
+8. **Physics Update** — Core movement loop (gravity, accel, friction, clamp, position)
+9. **Collision Detection** — AABB vs tile grid (Y-first resolution)
+10. **Jump System** — Coyote time, jump buffer, variable height
+11. **Input Drift** — Random impulses at Slipping/Feral tiers
+12. **Rendering** — Canvas drawing (tiles, zombie, direction indicator)
+13. **UI — Debug Panel** — Real-time movement diagnostics
+14. **UI — Sanity Slider** — Primary testing tool
+15. **UI — Tuning Panel** — Live constant adjustment + level generator controls
+16. **Game Loop** — requestAnimationFrame with dt capping
+17. **Initialization** — Setup and loop start
 
 ## Key Architecture Decisions
 
@@ -80,6 +81,32 @@ The `getSanityT()` function provides the interpolation factor: `(12 - sanity) / 
 The 40x25 map is purpose-built to test the core design tension: **ability vs control**. Each tier of platforms is placed at a height that requires a specific sanity range to reach. The player must lower their own sanity (via the slider) to jump higher, but doing so degrades their control (more drift, less air control, input delay).
 
 Row 21 includes a 10-tile horizontal gap that Lucid max range (~8 tiles) cannot cross, forcing Feral speed. This tests both vertical AND horizontal ability gating.
+
+## Level Generator
+
+### Mutable map variables
+`MAP_COLS`, `MAP_ROWS`, and `tileMap` are `let` rather than `const` so the generator can resize the world at runtime. The original Sanity Gauntlet is preserved as `PRESET_GAUNTLET` and can be restored via the "Gauntlet" button.
+
+### Physics envelope calculation
+`calcJumpEnvelope(sanity)` derives reachable tile distances directly from the game's physics constants using kinematics: peak height = v²/(2g), horizontal range = maxSpeed × timeToPeak. This ensures generated platforms are reachable at the specified minimum sanity level without hardcoded tile-step values.
+
+### Section-based terrain
+Levels are divided into 3-5 sections, each randomly assigned one of five archetypes: **canyon** (ground gap + bridge), **tower** (vertical stack), **open** (scattered platforms), **corridor** (low ceiling), **staircase** (ascending/descending chain). No back-to-back repeats, and at least one tower or canyon is guaranteed. Each section gets its own ground treatment (gaps, raised bumps, partial coverage). Section boundaries always have 2 tiles of ground on each side for walkability.
+
+### Platform personality
+Platform lengths are drawn from a weighted distribution: 25% tiny (1-2 tiles), 30% medium (3-4 tiles), 45% wide (5-7+ tiles, density-scaled). This prevents the uniform look of fixed-width platforms.
+
+### Landmarks
+1-2 landmarks per level add visual distinctiveness: tall pillars (1-wide, 3-6 tiles high), single floating tiles, and overhangs (platform with pillar hanging from one end).
+
+### BFS reachability validation
+After generation, a BFS flood from ground level checks every platform for reachability using the physics envelope as edge weights. Unreachable platforms are removed. This guarantees all remaining platforms can be reached at the specified minimum sanity.
+
+### Extracted helpers
+`resizeCanvas()` and `findAndSetSpawn()` were extracted from the init code so the generator can call them after building a new map. `resizeCanvas()` also updates the sanity bar's max-width to match the canvas.
+
+### Seeded PRNG
+`splitmix32` provides deterministic random numbers from a seed, making layouts reproducible. The UI exposes both a seed input and a "Random" button that picks a new seed.
 
 ## Ground Detection Fix
 
