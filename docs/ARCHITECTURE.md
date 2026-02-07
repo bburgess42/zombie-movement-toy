@@ -1,6 +1,6 @@
 # Zombie Movement Toy — Architecture
 
-**Last updated:** Feb 2026 — Initial build
+**Last updated:** Feb 2026 — Sanity Gauntlet build
 
 ## Design Philosophy
 
@@ -65,3 +65,22 @@ This order ensures:
 Input drift applies random horizontal velocity impulses on a timer. The timer resets to a random interval within the tier's range after each impulse. This creates irregular, unpredictable jolts rather than periodic wobble.
 
 Feral tier additionally has an **input delay** on direction reversals: if the zombie is moving right and the player presses left, there's a 0.05s window where the left input is ignored. This simulates the zombie's body resisting direction changes — momentum commits you.
+
+## Sanity Sliding Scales
+
+Jump velocity and deceleration interpolate smoothly across the full 0-12 sanity range, not stepped by tier. This avoids jarring threshold effects when crossing tier boundaries.
+
+- **FERAL_JUMP_MULT** (1.6): At sanity 0, jump velocity is 1.6x base. Linear interpolation from sanity 12 (1.0x) to sanity 0 (1.6x). Result: Feral zombie can reach platforms 9.7 tiles high vs Lucid's 4 tiles.
+- **FERAL_DECEL_MULT** (0.5): At sanity 0, deceleration is 0.5x base. Result: Feral zombie slides further, making precise platforming harder.
+
+The `getSanityT()` function provides the interpolation factor: `(12 - sanity) / 12`, yielding 0 at full Lucid and 1 at sanity 0.
+
+## Sanity Gauntlet Map Design
+
+The 40x25 map is purpose-built to test the core design tension: **ability vs control**. Each tier of platforms is placed at a height that requires a specific sanity range to reach. The player must lower their own sanity (via the slider) to jump higher, but doing so degrades their control (more drift, less air control, input delay).
+
+Row 21 includes a 10-tile horizontal gap that Lucid max range (~8 tiles) cannot cross, forcing Feral speed. This tests both vertical AND horizontal ability gating.
+
+## Ground Detection Fix
+
+The zombie's height is 48px (1.5 tiles). Using `zombie.y + zombie.height - 1` for ground detection caused grounded state flicker because 48px doesn't align to the 32px tile grid. Fix: use `zombie.y + zombie.height` (the actual feet pixel) for collision. This ensures consistent ground detection regardless of entity height.

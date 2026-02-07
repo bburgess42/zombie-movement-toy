@@ -1,6 +1,6 @@
 # Zombie Movement Toy — Current State
 
-**Version:** Initial build
+**Version:** Sanity Gauntlet build
 **Last updated:** Feb 2026
 
 ## Overview
@@ -49,13 +49,28 @@ Sanity 0-12, controlled by slider. Tiers:
 - **Gone overlay**: "MIND LOST" text when sanity = 0
 - **Controls hint**: bottom text showing key bindings
 
-### Test Level
-40x15 tile grid (1280x480 canvas). Hardcoded layout with:
-- Full-width ground floor
-- Platforms at various heights
-- Gaps of varying width
-- Vertical shaft sections
-- Long flat runway
+### Sanity Sliding Scales
+Jump velocity and deceleration now interpolate smoothly across the full 0-12 sanity range (not stepped by tier). At sanity 12 the zombie gets base values; at sanity 0 it gets the multiplied values. Creates a continuous feel progression.
+
+- `FERAL_JUMP_MULT` (1.6): Jump strengthens as sanity drops (sanity 1 peak ~309px / 9.7 tiles)
+- `FERAL_DECEL_MULT` (0.5): Friction weakens as sanity drops (more slidey at low sanity)
+
+### Test Level — Sanity Gauntlet
+40x25 tile grid (1280x800 canvas). The "Sanity Gauntlet" is designed so platforms are impossible at full Lucid and require progressively lower sanity to reach, forcing the player to trade control for ability.
+
+Jump peaks by sanity (FERAL_JUMP_MULT = 1.6):
+- Sanity 12 (Lucid): ~129px (4 tiles)
+- Sanity 9 (Lucid): ~170px (5.3 tiles)
+- Sanity 5 (Slipping): ~234px (7.3 tiles)
+- Sanity 3 (Feral): ~270px (8.4 tiles)
+- Sanity 1 (Feral): ~309px (9.7 tiles)
+
+Tier layout:
+- Ground (row 24): runway, any sanity
+- Lucid zone (row 21): 3 rows up, easy at sanity 12; includes 10-tile gap requiring Feral speed
+- Slipping zone (row 16): 5 rows up, needs sanity <= 9
+- Feral zone (row 8): 8 rows up, needs sanity <= 3
+- Summit (row 2): 6 rows up, already Feral-only
 
 ## Constants (defaults)
 
@@ -63,13 +78,17 @@ Sanity 0-12, controlled by slider. Tiers:
 |----------|-------|------|
 | BASE_MAX_SPEED | 300 | px/s |
 | BASE_ACCELERATION | 1800 | px/s² |
-| BASE_DECELERATION | 2400 | px/s² |
+| BASE_DECELERATION | 3200 | px/s² |
 | BASE_AIR_CONTROL | 0.8 | multiplier |
-| JUMP_VELOCITY | -500 | px/s |
+| JUMP_VELOCITY | -600 | px/s |
 | GRAVITY | 1400 | px/s² |
 | COYOTE_TIME | 0.1 | seconds |
 | JUMP_BUFFER_TIME | 0.1 | seconds |
 | TILE_SIZE | 32 | px |
+| FERAL_JUMP_MULT | 1.6 | multiplier (sanity-interpolated) |
+| FERAL_DECEL_MULT | 0.5 | multiplier (sanity-interpolated) |
+| MAP_COLS | 40 | tiles |
+| MAP_ROWS | 25 | tiles |
 
 ## File Structure
 
