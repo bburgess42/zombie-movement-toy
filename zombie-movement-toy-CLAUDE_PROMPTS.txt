@@ -534,6 +534,7 @@ After each round of changes from the Designer+Coder:
 - Balance values sourced from paper prototype MC simulations (27,000 sims)
 
 ## Important Files to Read First
+- CLAUDE.md — Gamedev skills framework (read skills relevant to the current task)
 - docs/GDD.md — Game design document (from paper prototype)
 - docs/CURRENT_STATE.md — Implementation reference
 - docs/TODO.md — Task tracking
@@ -669,6 +670,7 @@ You own and modify:
 - HTML elements only for UI overlay (sliders, debug panel, tuning panel)
 
 ## Important Files to Read Before Any Task
+- CLAUDE.md — Gamedev skills framework (read skills relevant to the current task)
 - docs/CURRENT_STATE.md — Full implementation reference
 - docs/GDD.md — Game design document (for sanity tier values and feel targets)
 - index.html — The entire prototype
