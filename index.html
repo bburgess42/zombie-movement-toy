@@ -193,7 +193,7 @@ canvas {
 // --- Base movement (Lucid tier) ---
 let BASE_MAX_SPEED = 300;          // px/s — top horizontal speed
 let BASE_ACCELERATION = 1800;      // px/s² — how fast we reach max speed
-let BASE_DECELERATION = 2400;      // px/s² — friction when no input
+let BASE_DECELERATION = 3200;      // px/s² — friction when no input
 let BASE_AIR_CONTROL = 0.8;        // multiplier on accel while airborne
 
 // --- Jump ---
@@ -212,6 +212,13 @@ let SLIPPING_AIR_CONTROL_MULT = 0.85;
 let FERAL_SPEED_MULT = 1.5;
 let FERAL_ACCEL_MULT = 1.6;
 let FERAL_AIR_CONTROL_MULT = 0.5;
+
+// --- Sanity sliding scales ---
+// These scale smoothly with sanity (not stepped by tier).
+// At sanity 12 the zombie gets base values; at sanity 0 it gets
+// the FERAL_*_MULT × base. Linear interpolation between.
+let FERAL_JUMP_MULT = 1.3;        // jump strengthens as sanity drops
+let FERAL_DECEL_MULT = 0.5;       // friction weakens as sanity drops (more slidey)
 
 // --- Input drift ---
 // Slipping drift: subtle random impulses
@@ -366,8 +373,25 @@ function getAcceleration() {
     return accel;
 }
 
+// Sanity sliding scales share a common interpolation factor:
+// t = 0 at sanity 12 (Lucid), t = 1 at sanity 0 (Gone).
+function getSanityT() {
+    return Math.max(0, Math.min(1, (12 - sanity) / 12));
+}
+
+// Deceleration weakens as sanity drops — the zombie can't stop
+// its own momentum. Creates the "committed to a direction" feel
+// at low sanity (Swink: simulation weight).
 function getDeceleration() {
-    return BASE_DECELERATION;
+    const t = getSanityT();
+    return BASE_DECELERATION * (1 + t * (FERAL_DECEL_MULT - 1));
+}
+
+// Jump strengthens as sanity drops — the feral zombie is more
+// explosive. Smooth scale, not stepped by tier.
+function getJumpVelocity() {
+    const t = getSanityT();
+    return JUMP_VELOCITY * (1 + t * (FERAL_JUMP_MULT - 1));
 }
 
 function getAirControl() {
@@ -644,7 +668,7 @@ function updateJump() {
     const wantsJump = zombie.jumpBufferTimer > 0;
 
     if (canJump && wantsJump) {
-        zombie.vy = JUMP_VELOCITY;
+        zombie.vy = getJumpVelocity();
         zombie.grounded = false;
         zombie.coyoteTimer = COYOTE_TIME; // exhaust coyote time to prevent double jump
         zombie.jumpBufferTimer = 0;
@@ -785,6 +809,8 @@ function updateDebugPanel() {
         `Air Control: ${getAirControl().toFixed(2)}`,
         `Drift Timer: ${drift.timer.toFixed(2)}`,
         `Drift Next: ${drift.nextInterval.toFixed(2)}`,
+        `Jump Vel: ${getJumpVelocity().toFixed(0)}`,
+        `Decel: ${getDeceleration().toFixed(0)}`,
     ];
 
     if (tier === 'Feral' && drift.inputDelayTimer > 0) {
@@ -869,6 +895,10 @@ const tuningParams = [
     { label: 'Slip Impulse', key: 'SLIPPING_DRIFT_IMPULSE', min: 10, max: 200, step: 10 },
     { label: 'Feral Impulse', key: 'FERAL_DRIFT_IMPULSE', min: 50, max: 400, step: 10 },
     { label: 'Feral Delay', key: 'FERAL_INPUT_DELAY', min: 0, max: 0.2, step: 0.01 },
+
+    { section: 'Sanity Scaling' },
+    { label: 'Feral Jump ×', key: 'FERAL_JUMP_MULT', min: 1.0, max: 2.0, step: 0.05 },
+    { label: 'Feral Decel ×', key: 'FERAL_DECEL_MULT', min: 0.1, max: 1.0, step: 0.05 },
 ];
 
 // We store references to the global variables via eval for live read/write.
