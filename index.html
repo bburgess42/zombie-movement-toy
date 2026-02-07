@@ -102,7 +102,7 @@ canvas {
     line-height: 1.8;
     color: #cccccc;
     border-radius: 4px;
-    max-height: 430px;
+    max-height: 750px;
     overflow-y: auto;
     width: 280px;
     display: none;
@@ -197,7 +197,7 @@ let BASE_DECELERATION = 2400;      // px/s² — friction when no input
 let BASE_AIR_CONTROL = 0.8;        // multiplier on accel while airborne
 
 // --- Jump ---
-let JUMP_VELOCITY = -500;          // px/s — initial upward velocity (negative = up)
+let JUMP_VELOCITY = -600;          // px/s — initial upward velocity (negative = up)
 let GRAVITY = 1400;                // px/s² — downward pull
 let COYOTE_TIME = 0.1;            // seconds — grace period after leaving ground
 let JUMP_BUFFER_TIME = 0.1;       // seconds — pre-landing jump input memory
@@ -227,35 +227,57 @@ let FERAL_INPUT_DELAY = 0.05;             // seconds — delay on direction reve
 
 // ============================================================
 // TILE MAP
-// Hardcoded test level. Designed to test: flat running, jumps
-// of varying height (1-3 tiles), gaps of varying width (2-6
-// tiles), falling, vertical shaft climbing, and top-speed runs.
-// 40 tiles wide x 15 tiles tall. '=' is solid, '.' is empty.
-// Architecture note: storing as a flat string array instead of
-// a 2D array because it maps directly to the ASCII spec and
-// makes the level layout visually obvious in code.
+// Hardcoded test level. 40 tiles wide x 25 tiles tall.
+// Designed around the zombie's 48px (1.5-tile) height and
+// ~89px (2.8-tile) max jump. Floors are spaced 3 rows apart
+// so the zombie can just barely reach the next level up.
+//
+// Test scenarios:
+//   - Long flat runway (row 24, full width)
+//   - Gap jumps on F1: 2-tile, 4-tile, 6-tile gaps (row 21)
+//   - Height jumps: F0->F1 (3 rows), F1->F2, F2->F3, F3->F4
+//   - Vertical shaft: alternating L/R platforms (rows 12-3)
+//   - Falling from height: jump off any upper platform
+//
+// Floor plan:
+//   F0 = row 24 (ground, runway)
+//   F1 = row 21 (low platforms with gaps)
+//   F2 = row 18 (mid platforms)
+//   F3 = row 15 (mid-high platforms)
+//   F4 = row 12 (high platforms + V-shaft entry)
+//   V-shaft: rows 12, 9, 6, 3 (alternating cols 10-13 / 14-17)
 // ============================================================
 
 const TILE_SIZE = 32;
 const MAP_COLS = 40;
-const MAP_ROWS = 15;
+const MAP_ROWS = 25;
 
 const MAP_DATA = [
-    '........................................', // row 0  (top)
+    '........................................', // row 0
     '........................................', // row 1
     '........................................', // row 2
-    '....====............................====', // row 3
+    '..............====......................', // row 3  V-shaft top
     '........................................', // row 4
-    '..====....====..........====............', // row 5
-    '................====....................', // row 6
+    '........................................', // row 5
+    '..........====..........................', // row 6  V-shaft
     '........................................', // row 7
-    '====........====........====....====....', // row 8
-    '........................................', // row 9
-    '....====................................', // row 10
+    '........................................', // row 8
+    '..............====......................', // row 9  V-shaft
+    '........................................', // row 10
     '........................................', // row 11
-    '====....====....====....====....====....', // row 12
+    '..........====..........====......====..', // row 12 F4 + V-shaft base
     '........................................', // row 13
-    '========================================', // row 14 (ground)
+    '........................................', // row 14
+    '....====..........====..........====....', // row 15 F3
+    '........................................', // row 16
+    '........................................', // row 17
+    '........====......====......====....====', // row 18 F2
+    '........................................', // row 19
+    '........................................', // row 20
+    '==..====....====....====......====..====', // row 21 F1 (gaps: 2,4,4,6,2)
+    '........................................', // row 22
+    '........................................', // row 23
+    '========================================', // row 24 F0 ground (runway)
 ];
 
 // Parse map into a 2D boolean grid: true = solid tile
@@ -460,12 +482,19 @@ function updatePhysics(dt) {
     const maxSpeed = getMaxSpeed();
     zombie.vx = Math.max(-maxSpeed, Math.min(maxSpeed, zombie.vx));
 
-    // --- Update position ---
+    // --- Update position and resolve collisions per-axis ---
+    // Moving and resolving one axis at a time prevents the bug where
+    // pressing into a wall causes the zombie's x to overlap the wall
+    // column, and the ceiling check sees the wall tile and kills the
+    // jump. By resolving X first, the zombie's horizontal position is
+    // corrected before any vertical checks run.
     zombie.x += zombie.vx * dt;
-    zombie.y += zombie.vy * dt;
+    clampWorldBoundsX();
+    resolveHorizontal();
 
-    // --- Collision resolution ---
-    resolveCollisions();
+    zombie.y += zombie.vy * dt;
+    clampWorldBoundsY();
+    resolveVertical();
 
     // --- Jump timers ---
     updateJumpTimers(dt);
@@ -476,12 +505,16 @@ function updatePhysics(dt) {
 
 // ============================================================
 // COLLISION DETECTION
-// Simple AABB vs tile grid. We resolve axes separately to avoid
-// corner-case tunneling. The zombie MUST never clip through
-// platforms — we prefer stopping movement over allowing phasing.
-// Architecture note: resolving Y before X prevents the common
-// "stuck on platform edge" bug where horizontal resolution
-// fights with gravity.
+// Simple AABB vs tile grid. Each axis is moved and resolved
+// independently in updatePhysics: X first, then Y. This
+// prevents the "wall eats jump" bug where unresolved horizontal
+// overlap causes the ceiling check to see wall tiles.
+//
+// Ground detection uses zombie.y + zombie.height (feet pixel)
+// instead of zombie.y + zombie.height - 1 (last body pixel).
+// This fixes a flickering grounded state when the zombie is
+// exactly 1.5 tiles tall and perfectly placed on a tile
+// boundary — the last body pixel falls in the row above ground.
 // ============================================================
 
 function isSolid(col, row) {
@@ -489,8 +522,7 @@ function isSolid(col, row) {
     return tileMap[row][col];
 }
 
-function resolveCollisions() {
-    // Clamp to world bounds (left/right/top)
+function clampWorldBoundsX() {
     if (zombie.x < 0) {
         zombie.x = 0;
         zombie.vx = Math.max(0, zombie.vx);
@@ -499,36 +531,36 @@ function resolveCollisions() {
         zombie.x = MAP_COLS * TILE_SIZE - zombie.width;
         zombie.vx = Math.min(0, zombie.vx);
     }
+}
+
+function clampWorldBoundsY() {
     if (zombie.y < 0) {
         zombie.y = 0;
         zombie.vy = Math.max(0, zombie.vy);
     }
-    // Bottom of world — place on last row
     if (zombie.y + zombie.height > MAP_ROWS * TILE_SIZE) {
         zombie.y = MAP_ROWS * TILE_SIZE - zombie.height;
         zombie.vy = 0;
-        zombie.grounded = true;
     }
-
-    zombie.grounded = false;
-
-    // Resolve vertical collisions first, then horizontal.
-    // This order prevents edge-sticking on platform corners.
-    resolveVertical();
-    resolveHorizontal();
 }
 
 function resolveVertical() {
-    // Find all tile columns the zombie overlaps
     const left = Math.floor(zombie.x / TILE_SIZE);
     const right = Math.floor((zombie.x + zombie.width - 1) / TILE_SIZE);
 
+    zombie.grounded = false;
+
     if (zombie.vy >= 0) {
-        // Falling or stationary — check below
-        const bottomRow = Math.floor((zombie.y + zombie.height - 1) / TILE_SIZE);
+        // Falling or stationary — sense ground at feet.
+        // Using zombie.y + zombie.height (not -1) so that when the
+        // zombie is exactly on a tile boundary, we detect the tile
+        // below its feet rather than the empty row its bottom pixel
+        // occupies. This eliminates grounded flicker for non-tile-
+        // aligned heights (e.g. 48px = 1.5 tiles).
+        const feetRow = Math.floor((zombie.y + zombie.height) / TILE_SIZE);
         for (let col = left; col <= right; col++) {
-            if (isSolid(col, bottomRow)) {
-                zombie.y = bottomRow * TILE_SIZE - zombie.height;
+            if (isSolid(col, feetRow)) {
+                zombie.y = feetRow * TILE_SIZE - zombie.height;
                 zombie.vy = 0;
                 zombie.grounded = true;
                 break;
@@ -554,7 +586,6 @@ function resolveHorizontal() {
     const bottom = Math.floor((zombie.y + zombie.height - 1) / TILE_SIZE);
 
     if (zombie.vx > 0) {
-        // Moving right — check right edge
         const rightCol = Math.floor((zombie.x + zombie.width - 1) / TILE_SIZE);
         for (let row = top; row <= bottom; row++) {
             if (isSolid(rightCol, row)) {
@@ -566,7 +597,6 @@ function resolveHorizontal() {
     }
 
     if (zombie.vx < 0) {
-        // Moving left — check left edge
         const leftCol = Math.floor(zombie.x / TILE_SIZE);
         for (let row = top; row <= bottom; row++) {
             if (isSolid(leftCol, row)) {
@@ -924,14 +954,26 @@ function init() {
     buildTuningPanel();
     updateSanityUI();
 
-    // Position zombie on the ground at start
-    // Find the ground level at spawn column
-    zombie.x = TILE_SIZE; // one tile from left edge
-    for (let row = MAP_ROWS - 1; row >= 0; row--) {
-        if (tileMap[row][Math.floor(zombie.x / TILE_SIZE)]) {
-            zombie.y = row * TILE_SIZE - zombie.height;
-            break;
+    // Position zombie on the ground at start.
+    // Scan leftward columns for a valid spawn: needs solid ground below
+    // AND enough headroom above (zombie is 48px = 1.5 tiles tall, so the
+    // tile above ground must also be clear).
+    for (let col = 0; col < MAP_COLS; col++) {
+        for (let row = MAP_ROWS - 1; row >= 0; row--) {
+            if (!tileMap[row][col]) continue; // not ground
+            // Found ground at (col, row). Check headroom: the zombie is
+            // 48px tall, so standing on this row its top is 1.5 tiles up.
+            // We need the two rows above to be clear.
+            const headRow1 = row - 1;
+            const headRow2 = row - 2;
+            if (headRow1 >= 0 && !isSolid(col, headRow1) &&
+                headRow2 >= 0 && !isSolid(col, headRow2)) {
+                zombie.x = col * TILE_SIZE;
+                zombie.y = row * TILE_SIZE - zombie.height;
+                break;
+            }
         }
+        if (zombie.y < (MAP_ROWS - 1) * TILE_SIZE) break; // found valid spawn
     }
 
     requestAnimationFrame(gameLoop);
