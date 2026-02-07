@@ -35,7 +35,7 @@ canvas {
 /* --- Sanity Slider (top bar) --- */
 #sanity-bar {
     width: 100%;
-    max-width: 1284px;
+    max-width: 1284px; /* updated dynamically by resizeCanvas() */
     padding: 8px 16px;
     background: #0f3460;
     display: flex;
@@ -154,6 +154,36 @@ canvas {
     letter-spacing: 8px;
 }
 
+/* --- Level Generator controls in tuning panel --- */
+.gen-seed-input {
+    width: 70px;
+    background: #0a0a1a;
+    border: 1px solid #555;
+    color: #e0e0e0;
+    padding: 3px 6px;
+    font-family: 'Consolas', monospace;
+    font-size: 11px;
+    border-radius: 3px;
+    text-align: right;
+}
+.gen-button-row {
+    display: flex;
+    gap: 4px;
+    margin: 6px 0;
+}
+.gen-button-row button {
+    flex: 1;
+    background: #1a1a3e;
+    color: #e0e0e0;
+    border: 1px solid #555;
+    padding: 4px 8px;
+    font-family: 'Consolas', monospace;
+    font-size: 11px;
+    cursor: pointer;
+    border-radius: 3px;
+}
+.gen-button-row button:hover { background: #2a2a5e; border-color: #53d769; }
+
 /* --- Controls hint --- */
 #controls-hint {
     margin-top: 8px;
@@ -258,10 +288,10 @@ let FERAL_INPUT_DELAY = 0.05;             // seconds — delay on direction reve
 // ============================================================
 
 const TILE_SIZE = 32;
-const MAP_COLS = 40;
-const MAP_ROWS = 25;
+let MAP_COLS = 40;
+let MAP_ROWS = 25;
 
-const MAP_DATA = [
+const PRESET_GAUNTLET = [
     '........................................', // row 0
     '........................................', // row 1
     '......====......====....................', // row 2  Summit
@@ -289,10 +319,522 @@ const MAP_DATA = [
     '========================================', // row 24 Ground (runway)
 ];
 
+let MAP_DATA = [...PRESET_GAUNTLET];
+
 // Parse map into a 2D boolean grid: true = solid tile
-const tileMap = MAP_DATA.map(row =>
+let tileMap = MAP_DATA.map(row =>
     Array.from(row).map(ch => ch === '=')
 );
+
+// ============================================================
+// LEVEL GENERATOR
+// Procedural physics-aware platform generation. Calculates the
+// jump envelope from the actual physics constants, builds
+// layers bottom-up, adds stepping stones, then validates
+// reachability via BFS.
+// ============================================================
+
+/** Seeded PRNG (splitmix32) — returns a function producing 0..1 floats */
+function splitmix32(seed) {
+    let s = seed | 0;
+    return function() {
+        s |= 0;
+        s = s + 0x9e3779b9 | 0;
+        let t = s ^ (s >>> 16);
+        t = Math.imul(t, 0x21f0aaad);
+        t = t ^ (t >>> 15);
+        t = Math.imul(t, 0x735a2d97);
+        t = t ^ (t >>> 15);
+        return (t >>> 0) / 4294967296;
+    };
+}
+
+/** Calculate jump envelope from real physics constants at a given sanity */
+function calcJumpEnvelope(san) {
+    // Smooth interpolation: t=0 at sanity 12, t=1 at sanity 0
+    const t = Math.max(0, Math.min(1, (12 - san) / 12));
+    const jumpVel = Math.abs(JUMP_VELOCITY * (1 + t * (FERAL_JUMP_MULT - 1)));
+
+    // Peak height from kinematics: h = v² / (2g)
+    const peakPx = (jumpVel * jumpVel) / (2 * GRAVITY);
+    const maxUpTiles = Math.floor(peakPx / TILE_SIZE);
+
+    // Horizontal range at peak: time_to_peak = v/g, distance = speed * time
+    let maxSpeed = BASE_MAX_SPEED;
+    if (san < 4) maxSpeed *= FERAL_SPEED_MULT;
+    else if (san < 7) maxSpeed *= SLIPPING_SPEED_MULT;
+    const timeToPeak = jumpVel / GRAVITY;
+    const horizPx = maxSpeed * timeToPeak;
+    const maxAcrossTiles = Math.floor(horizPx / TILE_SIZE);
+
+    return { maxUpTiles, maxAcrossTiles };
+}
+
+/** Quick pairwise reachability check (elliptical envelope) */
+function canReachPlatform(ax, ay, bx, by, maxUp, maxAcross) {
+    const dx = Math.abs(bx - ax);
+    const dy = ay - by; // positive = jumping up
+    if (dy <= 0) return dx <= maxAcross + 1;
+    return (dx / (maxAcross + 1)) ** 2 + (dy / (maxUp + 0.5)) ** 2 <= 1;
+}
+
+/** BFS reachability validation — removes platforms unreachable from ground */
+function validateReachability(grid, w, h, maxUp, maxAcross) {
+    const groundY = h - 1;
+
+    function solid(x, y) {
+        if (x < 0 || x >= w || y < 0 || y >= h) return true;
+        return grid[y][x];
+    }
+    function canStand(x, y) {
+        if (solid(x, y)) return false;
+        return y === h - 1 || solid(x, y + 1);
+    }
+    function gravity(x, y) {
+        while (y < h - 1 && !solid(x, y + 1)) y++;
+        if (solid(x, y)) return null;
+        return { x, y };
+    }
+
+    const reachable = new Set();
+    const visited = new Set();
+    const queue = [];
+
+    // Seed from ground-level standing positions
+    for (let x = 0; x < w; x++) {
+        for (let y = groundY - 2; y <= groundY; y++) {
+            if (y >= 0 && canStand(x, y)) {
+                const key = `${x},${y}`;
+                if (!visited.has(key)) {
+                    visited.add(key);
+                    queue.push({ x, y });
+                }
+            }
+        }
+    }
+
+    while (queue.length > 0) {
+        const cur = queue.shift();
+        reachable.add(`${cur.x},${cur.y}`);
+        const moves = [];
+
+        // Horizontal moves
+        for (const dx of [-1, 1]) {
+            const nx = cur.x + dx;
+            if (!solid(nx, cur.y)) {
+                const landed = gravity(nx, cur.y);
+                if (landed) moves.push(landed);
+            }
+        }
+
+        // Jumps
+        if (canStand(cur.x, cur.y)) {
+            for (let jumpH = 1; jumpH <= maxUp; jumpH++) {
+                const upY = cur.y - jumpH;
+                let clear = true;
+                for (let cy = 1; cy <= jumpH; cy++) {
+                    if (solid(cur.x, cur.y - cy)) { clear = false; break; }
+                }
+                if (!clear) break;
+
+                const landed = gravity(cur.x, upY);
+                if (landed && (landed.x !== cur.x || landed.y !== cur.y)) moves.push(landed);
+
+                for (const ddx of [-1, 1]) {
+                    for (let reach = 1; reach <= maxAcross; reach++) {
+                        const ax = cur.x + ddx * reach;
+                        let hClear = true;
+                        for (let r = 1; r <= reach; r++) {
+                            if (solid(cur.x + ddx * r, upY)) { hClear = false; break; }
+                        }
+                        if (!hClear) break;
+                        const landed2 = gravity(ax, upY);
+                        if (landed2) moves.push(landed2);
+                    }
+                }
+            }
+        }
+
+        for (const m of moves) {
+            const key = `${m.x},${m.y}`;
+            if (!visited.has(key)) {
+                visited.add(key);
+                queue.push(m);
+            }
+        }
+    }
+
+    // Remove platform tiles where the standing surface is unreachable
+    for (let y = 1; y < h - 1; y++) {
+        for (let x = 1; x < w - 1; x++) {
+            if (!grid[y][x]) continue;
+            if (y === 0) continue;
+            if (!canStand(x, y - 1)) continue;
+            if (!reachable.has(`${x},${y - 1}`)) {
+                grid[y][x] = false;
+            }
+        }
+    }
+}
+
+/** Place a row of solid tiles, clamped to playable area */
+function placeRow(grid, y, x1, x2, width) {
+    for (let x = Math.max(1, x1); x <= Math.min(width - 2, x2); x++) {
+        grid[y][x] = true;
+    }
+}
+
+/** Random platform length with personality: mix of tiny, medium, and wide */
+function randPlatLen(rng, density) {
+    const roll = rng();
+    if (roll < 0.25) return 1 + Math.floor(rng() * 2);                         // tiny: 1-2
+    if (roll < 0.55) return 3 + Math.floor(rng() * 2);                         // medium: 3-4
+    return 5 + Math.floor(rng() * Math.max(1, Math.round(3 * density)));       // wide: 5-7+
+}
+
+/** Generate a single section by archetype */
+function generateSection(grid, type, sx, ex, groundY, height, width, rng, density, maxUp, maxAcross) {
+    const secW = ex - sx + 1;
+    const clamp = (x) => Math.max(1, Math.min(x, width - 2));
+
+    switch (type) {
+
+        case 'canyon': {
+            // Ground on sides, jumpable gap in the middle
+            const gapW = 2 + Math.floor(rng() * Math.min(maxAcross - 1, secW - 6));
+            const gapMid = sx + Math.floor(secW / 2) + Math.floor(rng() * 3) - 1;
+            const gs = clamp(gapMid - Math.floor(gapW / 2));
+            const ge = clamp(gs + gapW - 1);
+
+            for (let x = sx; x <= ex; x++) {
+                if (x < gs || x > ge) grid[groundY][x] = true;
+            }
+
+            // Bridge platform above the gap
+            const bridgeY = groundY - Math.max(2, Math.floor(maxUp * 0.4));
+            if (bridgeY > 2) {
+                placeRow(grid, bridgeY, gs - 1, ge + 1, width);
+            }
+
+            // Upper reward platform
+            const upperY = bridgeY - Math.max(2, Math.floor(maxUp * 0.5));
+            if (upperY > 2 && secW >= 8) {
+                const midX = sx + Math.floor(secW / 2);
+                const pLen = randPlatLen(rng, density);
+                placeRow(grid, upperY, midX - Math.floor(pLen / 2), midX + Math.ceil(pLen / 2), width);
+            }
+            break;
+        }
+
+        case 'tower': {
+            // Ground floor
+            for (let x = sx; x <= ex; x++) grid[groundY][x] = true;
+
+            // Vertical stack of alternating offset platforms
+            const towerCenter = sx + Math.floor(secW / 2) + Math.floor(rng() * 3) - 1;
+            let towerY = groundY;
+            let tier = 0;
+            while (true) {
+                const stepUp = 2 + Math.floor(rng() * Math.max(1, maxUp - 2));
+                const nextY = towerY - stepUp;
+                if (nextY <= 2) break;
+
+                const offset = (tier % 2 === 0)
+                    ? -(1 + Math.floor(rng() * 2))
+                    : (1 + Math.floor(rng() * 2));
+                const pLen = randPlatLen(rng, density);
+                const px = clamp(towerCenter + offset - Math.floor(pLen / 2));
+                placeRow(grid, nextY, px, px + pLen - 1, width);
+
+                towerY = nextY;
+                tier++;
+            }
+
+            // Side approach platform
+            const sideX = (towerCenter - sx > secW / 2) ? sx + 1 : ex - 4;
+            const sLen = 3 + Math.floor(rng() * 3);
+            const sideY = groundY - (2 + Math.floor(rng() * Math.max(1, maxUp - 2)));
+            if (sideY > 2) {
+                placeRow(grid, sideY, clamp(sideX), clamp(sideX + sLen - 1), width);
+            }
+            break;
+        }
+
+        case 'open': {
+            // Partial ground with gaps and raised sections
+            let x = sx;
+            while (x <= ex) {
+                if (rng() < 0.65) {
+                    const segLen = 3 + Math.floor(rng() * 5);
+                    for (let gx = x; gx < Math.min(x + segLen, ex + 1); gx++) {
+                        grid[groundY][gx] = true;
+                    }
+                    // Occasional raised bump
+                    if (rng() < 0.3 && segLen > 3) {
+                        const bLen = 2 + Math.floor(rng() * 2);
+                        for (let bx = x + 1; bx < Math.min(x + 1 + bLen, ex + 1); bx++) {
+                            grid[groundY - 1][bx] = true;
+                        }
+                    }
+                    x += segLen;
+                } else {
+                    x += 1 + Math.floor(rng() * Math.min(3, maxAcross));
+                }
+            }
+
+            // Scattered platforms at various heights — mix of sizes
+            const platCount = 2 + Math.floor(rng() * 4);
+            for (let p = 0; p < platCount; p++) {
+                const px = sx + 1 + Math.floor(rng() * (secW - 2));
+                const py = 3 + Math.floor(rng() * (groundY - 5));
+                const pLen = randPlatLen(rng, density);
+                placeRow(grid, py, clamp(px), clamp(px + pLen - 1), width);
+            }
+            break;
+        }
+
+        case 'corridor': {
+            // Full ground with low ceiling — creates cramped lower path
+            for (let x = sx; x <= ex; x++) grid[groundY][x] = true;
+
+            const ceilY = groundY - 3 - Math.floor(rng() * 2);
+            for (let x = sx; x <= ex; x++) grid[ceilY][x] = true;
+
+            // Punch gaps in the ceiling for transitions
+            const gapCount = 1 + Math.floor(rng() * 2);
+            for (let g = 0; g < gapCount; g++) {
+                const gx = sx + 1 + Math.floor(rng() * (secW - 4));
+                const gLen = 2 + Math.floor(rng() * 2);
+                for (let x = gx; x < Math.min(gx + gLen, ex + 1); x++) {
+                    grid[ceilY][x] = false;
+                }
+            }
+
+            // Upper platforms above the ceiling (risk/reward high path)
+            const upperCount = 1 + Math.floor(rng() * 2);
+            for (let u = 0; u < upperCount; u++) {
+                const ux = sx + 1 + Math.floor(rng() * (secW - 4));
+                const uy = ceilY - (2 + Math.floor(rng() * Math.max(1, maxUp - 2)));
+                if (uy > 2) {
+                    const uLen = randPlatLen(rng, density);
+                    placeRow(grid, uy, clamp(ux), clamp(ux + uLen - 1), width);
+                }
+            }
+
+            // Raised ground bump
+            if (rng() < 0.5) {
+                const bx = sx + 1 + Math.floor(rng() * (secW - 4));
+                const bLen = 2 + Math.floor(rng() * 3);
+                for (let x = bx; x < Math.min(bx + bLen, ex + 1); x++) {
+                    grid[groundY - 1][x] = true;
+                }
+            }
+            break;
+        }
+
+        case 'staircase': {
+            // Ascending or descending chain of platforms
+            const ascending = rng() < 0.5;
+
+            // Ground on the starting side
+            const gStart = ascending ? sx : sx + Math.floor(secW * 0.5);
+            const gEnd = ascending ? sx + Math.floor(secW * 0.5) : ex;
+            for (let x = gStart; x <= gEnd; x++) grid[groundY][x] = true;
+
+            // Step chain
+            const stepCount = 3 + Math.floor(rng() * 3);
+            let stepY = groundY;
+            let stepX = ascending ? sx + 2 : ex - 2;
+            const dir = ascending ? 1 : -1;
+
+            for (let s = 0; s < stepCount; s++) {
+                const rise = 1 + Math.floor(rng() * Math.max(1, Math.floor(maxUp * 0.4)));
+                const run = 2 + Math.floor(rng() * Math.max(1, maxAcross - 1));
+                stepY -= rise;
+                stepX += dir * run;
+                if (stepY <= 2 || stepX < sx + 1 || stepX > ex - 1) break;
+
+                const pLen = randPlatLen(rng, density);
+                placeRow(grid, stepY, clamp(stepX), clamp(stepX + pLen - 1), width);
+            }
+            break;
+        }
+    }
+}
+
+/** Inject 1-2 landmark features for visual identity */
+function injectLandmarks(grid, width, height, groundY, rng, maxUp) {
+    const count = 1 + Math.floor(rng() * 2);
+    const types = ['pillar', 'floater', 'overhang'];
+
+    for (let i = 0; i < count; i++) {
+        const type = types[Math.floor(rng() * types.length)];
+
+        switch (type) {
+            case 'pillar': {
+                // Tall 1-wide column rising from ground
+                const px = 3 + Math.floor(rng() * (width - 6));
+                const pillarH = 3 + Math.floor(rng() * 5);
+                for (let dy = 1; dy <= pillarH && groundY - dy > 1; dy++) {
+                    grid[groundY - dy][px] = true;
+                }
+                break;
+            }
+            case 'floater': {
+                // Single floating tile in open space
+                const fx = 3 + Math.floor(rng() * (width - 6));
+                const fy = 3 + Math.floor(rng() * (height - 8));
+                grid[fy][fx] = true;
+                break;
+            }
+            case 'overhang': {
+                // Hang 1-2 tiles below an existing platform edge
+                for (let attempt = 0; attempt < 15; attempt++) {
+                    const ox = 2 + Math.floor(rng() * (width - 4));
+                    const oy = 3 + Math.floor(rng() * (height - 6));
+                    if (grid[oy][ox] && oy + 1 < groundY && !grid[oy + 1][ox]) {
+                        grid[oy + 1][ox] = true;
+                        if (rng() < 0.5 && ox + 1 < width - 1 &&
+                            grid[oy][ox + 1] && !grid[oy + 1][ox + 1]) {
+                            grid[oy + 1][ox + 1] = true;
+                        }
+                        break;
+                    }
+                }
+                break;
+            }
+        }
+    }
+}
+
+/** Generate a level with the given parameters */
+function generateLevel(width, height, density, minSanity, seed) {
+    const rng = splitmix32(seed);
+    const { maxUpTiles, maxAcrossTiles } = calcJumpEnvelope(minSanity);
+    const groundY = height - 1;
+
+    // Initialize empty grid with walls and ceiling
+    const grid = [];
+    for (let y = 0; y < height; y++) {
+        grid[y] = [];
+        for (let x = 0; x < width; x++) grid[y][x] = false;
+    }
+    for (let y = 0; y < height; y++) { grid[y][0] = true; grid[y][width - 1] = true; }
+    for (let x = 0; x < width; x++) grid[0][x] = true;
+
+    // --- SECTION-BASED GENERATION ---
+    const archetypes = ['canyon', 'tower', 'open', 'corridor', 'staircase'];
+    const sectionCount = Math.max(3, Math.min(5, Math.floor(width / 10)));
+    const secW = Math.floor((width - 2) / sectionCount);
+
+    const sections = [];
+    let lastType = null;
+    for (let i = 0; i < sectionCount; i++) {
+        const sx = 1 + i * secW;
+        const ex = (i === sectionCount - 1) ? width - 2 : sx + secW - 1;
+        let available = archetypes.filter(t => t !== lastType);
+        const type = available[Math.floor(rng() * available.length)];
+        lastType = type;
+        sections.push({ sx, ex, type });
+    }
+
+    // Guarantee at least one tower or canyon for vertical interest
+    if (!sections.some(s => s.type === 'tower' || s.type === 'canyon')) {
+        const idx = 1 + Math.floor(rng() * Math.max(1, sections.length - 2));
+        sections[idx].type = rng() < 0.5 ? 'tower' : 'canyon';
+    }
+
+    // Generate each section
+    for (const sec of sections) {
+        generateSection(grid, sec.type, sec.sx, sec.ex,
+            groundY, height, width, rng, density, maxUpTiles, maxAcrossTiles);
+    }
+
+    // Ensure ground continuity at section boundaries (2 tiles each edge)
+    for (const sec of sections) {
+        grid[groundY][sec.sx] = true;
+        if (sec.sx + 1 <= sec.ex) grid[groundY][sec.sx + 1] = true;
+        grid[groundY][sec.ex] = true;
+        if (sec.ex - 1 >= sec.sx) grid[groundY][sec.ex - 1] = true;
+    }
+
+    // --- LANDMARKS ---
+    injectLandmarks(grid, width, height, groundY, rng, maxUpTiles);
+
+    // --- BFS REACHABILITY VALIDATION ---
+    validateReachability(grid, width, height, maxUpTiles, maxAcrossTiles);
+
+    return grid;
+}
+
+/** Resize canvas to match current map dimensions */
+function resizeCanvas() {
+    canvas.width = MAP_COLS * TILE_SIZE;
+    canvas.height = MAP_ROWS * TILE_SIZE;
+    document.getElementById('sanity-bar').style.maxWidth = (MAP_COLS * TILE_SIZE + 4) + 'px';
+}
+
+/** Find a valid spawn point and place the zombie there */
+function findAndSetSpawn() {
+    for (let col = 0; col < MAP_COLS; col++) {
+        for (let row = MAP_ROWS - 1; row >= 0; row--) {
+            if (!tileMap[row][col]) continue;
+            const h1 = row - 1, h2 = row - 2;
+            if (h1 >= 0 && !tileMap[h1][col] && h2 >= 0 && !tileMap[h2][col]) {
+                zombie.x = col * TILE_SIZE;
+                zombie.y = row * TILE_SIZE - zombie.height;
+                zombie.vx = 0;
+                zombie.vy = 0;
+                zombie.grounded = false;
+                return;
+            }
+        }
+    }
+}
+
+/** Apply a generated grid as the active level */
+function applyLevel(grid, width, height) {
+    MAP_COLS = width;
+    MAP_ROWS = height;
+    tileMap = grid;
+    // Build MAP_DATA strings for consistency
+    MAP_DATA = grid.map(row => row.map(v => v ? '=' : '.').join(''));
+    resizeCanvas();
+    findAndSetSpawn();
+}
+
+/** Restore the hardcoded Sanity Gauntlet map */
+function loadPresetGauntlet() {
+    MAP_COLS = 40;
+    MAP_ROWS = 25;
+    MAP_DATA = [...PRESET_GAUNTLET];
+    tileMap = MAP_DATA.map(row => Array.from(row).map(ch => ch === '='));
+    resizeCanvas();
+    findAndSetSpawn();
+    // Update generator sliders to match
+    const ws = document.getElementById('gen-width');
+    const hs = document.getElementById('gen-height');
+    if (ws) { ws.value = 40; document.getElementById('gen-width-val').textContent = '40'; }
+    if (hs) { hs.value = 25; document.getElementById('gen-height-val').textContent = '25'; }
+}
+
+/** UI: Generate level with current slider values */
+function doGenerate() {
+    const width = parseInt(document.getElementById('gen-width').value);
+    const height = parseInt(document.getElementById('gen-height').value);
+    const density = parseInt(document.getElementById('gen-density').value) / 100;
+    const minSanity = parseInt(document.getElementById('gen-sanity').value);
+    const seed = parseInt(document.getElementById('gen-seed').value) || 42;
+    const grid = generateLevel(width, height, density, minSanity, seed);
+    applyLevel(grid, width, height);
+}
+
+/** UI: Random seed then generate */
+function doRandomGenerate() {
+    const seed = Math.floor(Math.random() * 999999);
+    document.getElementById('gen-seed').value = seed;
+    doGenerate();
+}
 
 // ============================================================
 // GAME STATE
@@ -743,8 +1285,7 @@ const canvas = document.getElementById('game-canvas');
 const ctx = canvas.getContext('2d');
 
 // Scale canvas to map size
-canvas.width = MAP_COLS * TILE_SIZE;
-canvas.height = MAP_ROWS * TILE_SIZE;
+resizeCanvas();
 
 function render() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -928,9 +1469,38 @@ function buildTuningPanel() {
         `;
     }
 
+    // Level Generator section
+    html += `<div class="section-label">Level Generator</div>`;
+    html += `
+        <label><span>Width</span>
+            <input type="range" id="gen-width" min="20" max="60" step="1" value="${MAP_COLS}">
+            <span id="gen-width-val" style="min-width:45px;text-align:right">${MAP_COLS}</span>
+        </label>
+        <label><span>Height</span>
+            <input type="range" id="gen-height" min="15" max="35" step="1" value="${MAP_ROWS}">
+            <span id="gen-height-val" style="min-width:45px;text-align:right">${MAP_ROWS}</span>
+        </label>
+        <label><span>Density</span>
+            <input type="range" id="gen-density" min="10" max="90" step="5" value="50">
+            <span id="gen-density-val" style="min-width:45px;text-align:right">0.5</span>
+        </label>
+        <label><span>Min Sanity</span>
+            <input type="range" id="gen-sanity" min="1" max="12" step="1" value="7">
+            <span id="gen-sanity-val" style="min-width:45px;text-align:right">7</span>
+        </label>
+        <label><span>Seed</span>
+            <input type="number" id="gen-seed" value="42" class="gen-seed-input">
+        </label>
+        <div class="gen-button-row">
+            <button onclick="doGenerate()">Generate</button>
+            <button onclick="doRandomGenerate()">Random</button>
+            <button onclick="loadPresetGauntlet()">Gauntlet</button>
+        </div>
+    `;
+
     tuningPanel.innerHTML = html;
 
-    // Attach listeners
+    // Attach listeners for tuning sliders
     for (const param of tuningParams) {
         if (param.section) continue;
         const id = `tune-${param.key}`;
@@ -944,6 +1514,20 @@ function buildTuningPanel() {
             valSpan.textContent = param.step < 1 ? val.toFixed(2) : val;
         });
     }
+
+    // Attach listeners for generator sliders
+    document.getElementById('gen-width').addEventListener('input', function() {
+        document.getElementById('gen-width-val').textContent = this.value;
+    });
+    document.getElementById('gen-height').addEventListener('input', function() {
+        document.getElementById('gen-height-val').textContent = this.value;
+    });
+    document.getElementById('gen-density').addEventListener('input', function() {
+        document.getElementById('gen-density-val').textContent = (this.value / 100).toFixed(1);
+    });
+    document.getElementById('gen-sanity').addEventListener('input', function() {
+        document.getElementById('gen-sanity-val').textContent = this.value;
+    });
 }
 
 // ============================================================
@@ -985,29 +1569,7 @@ function gameLoop(currentTime) {
 function init() {
     buildTuningPanel();
     updateSanityUI();
-
-    // Position zombie on the ground at start.
-    // Scan leftward columns for a valid spawn: needs solid ground below
-    // AND enough headroom above (zombie is 48px = 1.5 tiles tall, so the
-    // tile above ground must also be clear).
-    for (let col = 0; col < MAP_COLS; col++) {
-        for (let row = MAP_ROWS - 1; row >= 0; row--) {
-            if (!tileMap[row][col]) continue; // not ground
-            // Found ground at (col, row). Check headroom: the zombie is
-            // 48px tall, so standing on this row its top is 1.5 tiles up.
-            // We need the two rows above to be clear.
-            const headRow1 = row - 1;
-            const headRow2 = row - 2;
-            if (headRow1 >= 0 && !isSolid(col, headRow1) &&
-                headRow2 >= 0 && !isSolid(col, headRow2)) {
-                zombie.x = col * TILE_SIZE;
-                zombie.y = row * TILE_SIZE - zombie.height;
-                break;
-            }
-        }
-        if (zombie.y < (MAP_ROWS - 1) * TILE_SIZE) break; // found valid spawn
-    }
-
+    findAndSetSpawn();
     requestAnimationFrame(gameLoop);
 }
 
