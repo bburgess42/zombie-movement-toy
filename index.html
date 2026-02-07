@@ -1,0 +1,943 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Zombie Movement Toy</title>
+<style>
+/* ============================================================
+   STYLES
+   Minimal styling — canvas-centric layout with UI overlay.
+   ============================================================ */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    background: #1a1a2e;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    color: #e0e0e0;
+    overflow-x: hidden;
+}
+
+#game-container {
+    position: relative;
+    margin-top: 10px;
+}
+
+canvas {
+    display: block;
+    border: 2px solid #444;
+    background: #16213e;
+}
+
+/* --- Sanity Slider (top bar) --- */
+#sanity-bar {
+    width: 100%;
+    max-width: 1284px;
+    padding: 8px 16px;
+    background: #0f3460;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-radius: 0 0 6px 6px;
+}
+
+#sanity-bar label {
+    font-weight: bold;
+    font-size: 14px;
+    white-space: nowrap;
+    min-width: 180px;
+}
+
+#sanity-slider {
+    flex: 1;
+    height: 6px;
+    cursor: pointer;
+    accent-color: #53d769;
+}
+
+/* --- Debug Panel (overlaid on canvas) --- */
+#debug-panel {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: rgba(0, 0, 0, 0.75);
+    padding: 8px 12px;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    color: #aaffaa;
+    border-radius: 4px;
+    pointer-events: none;
+    white-space: pre;
+    min-width: 200px;
+}
+
+/* --- Tuning Panel (collapsible side panel) --- */
+#tuning-toggle {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    background: rgba(0, 0, 0, 0.75);
+    color: #e0e0e0;
+    border: 1px solid #555;
+    padding: 4px 10px;
+    font-size: 12px;
+    cursor: pointer;
+    border-radius: 4px;
+    z-index: 10;
+}
+#tuning-toggle:hover { background: rgba(50, 50, 80, 0.9); }
+
+#tuning-panel {
+    position: absolute;
+    top: 36px;
+    left: 8px;
+    background: rgba(0, 0, 0, 0.85);
+    padding: 10px 14px;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 11px;
+    line-height: 1.8;
+    color: #cccccc;
+    border-radius: 4px;
+    max-height: 430px;
+    overflow-y: auto;
+    width: 280px;
+    display: none;
+    z-index: 5;
+}
+
+#tuning-panel.open { display: block; }
+
+#tuning-panel label {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 6px;
+}
+
+#tuning-panel input[type="range"] {
+    width: 100px;
+    height: 4px;
+    cursor: pointer;
+    accent-color: #53d769;
+}
+
+#tuning-panel .section-label {
+    color: #ffcc00;
+    font-weight: bold;
+    margin-top: 6px;
+    border-bottom: 1px solid #555;
+    padding-bottom: 2px;
+}
+
+/* --- Gone overlay --- */
+#gone-overlay {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    display: none;
+    justify-content: center;
+    align-items: center;
+    background: rgba(0, 0, 0, 0.6);
+    pointer-events: none;
+    z-index: 20;
+}
+#gone-overlay.active { display: flex; }
+#gone-overlay span {
+    font-size: 64px;
+    font-weight: bold;
+    color: #ff3333;
+    text-shadow: 0 0 30px #ff0000, 0 0 60px #880000;
+    font-family: 'Consolas', monospace;
+    letter-spacing: 8px;
+}
+
+/* --- Controls hint --- */
+#controls-hint {
+    margin-top: 8px;
+    font-size: 12px;
+    color: #888;
+    text-align: center;
+}
+</style>
+</head>
+<body>
+
+<div id="sanity-bar">
+    <label id="sanity-label">Sanity: 12.0 (Lucid)</label>
+    <input type="range" id="sanity-slider" min="0" max="12" step="0.1" value="12">
+</div>
+
+<div id="game-container">
+    <canvas id="game-canvas"></canvas>
+    <div id="debug-panel"></div>
+    <button id="tuning-toggle">Tuning</button>
+    <div id="tuning-panel"></div>
+    <div id="gone-overlay"><span>MIND LOST</span></div>
+</div>
+
+<div id="controls-hint">
+    WASD or Arrow Keys to move &bull; Space to jump &bull; Slider to change sanity tier
+</div>
+
+<script>
+// ============================================================
+// TUNABLE CONSTANTS
+// All movement parameters live here. The tuning panel reads and
+// writes these at runtime. Values sourced from paper prototype
+// MC simulations (zombie-platformer repo docs/GDD.md).
+// ============================================================
+
+// --- Base movement (Lucid tier) ---
+let BASE_MAX_SPEED = 300;          // px/s — top horizontal speed
+let BASE_ACCELERATION = 1800;      // px/s² — how fast we reach max speed
+let BASE_DECELERATION = 2400;      // px/s² — friction when no input
+let BASE_AIR_CONTROL = 0.8;        // multiplier on accel while airborne
+
+// --- Jump ---
+let JUMP_VELOCITY = -500;          // px/s — initial upward velocity (negative = up)
+let GRAVITY = 1400;                // px/s² — downward pull
+let COYOTE_TIME = 0.1;            // seconds — grace period after leaving ground
+let JUMP_BUFFER_TIME = 0.1;       // seconds — pre-landing jump input memory
+
+// --- Sanity tier multipliers ---
+// Slipping (sanity 4-6.99): faster but slightly less controlled
+let SLIPPING_SPEED_MULT = 1.25;
+let SLIPPING_ACCEL_MULT = 1.3;
+let SLIPPING_AIR_CONTROL_MULT = 0.85;
+
+// Feral (sanity 0.01-3.99): fast, strong accel, poor air control
+let FERAL_SPEED_MULT = 1.5;
+let FERAL_ACCEL_MULT = 1.6;
+let FERAL_AIR_CONTROL_MULT = 0.5;
+
+// --- Input drift ---
+// Slipping drift: subtle random impulses
+let SLIPPING_DRIFT_MIN_INTERVAL = 0.5;   // seconds
+let SLIPPING_DRIFT_MAX_INTERVAL = 1.5;
+let SLIPPING_DRIFT_IMPULSE = 50;          // px/s
+
+// Feral drift: larger impulses + input delay on direction changes
+let FERAL_DRIFT_MIN_INTERVAL = 0.3;
+let FERAL_DRIFT_MAX_INTERVAL = 0.8;
+let FERAL_DRIFT_IMPULSE = 150;            // px/s
+let FERAL_INPUT_DELAY = 0.05;             // seconds — delay on direction reversal
+
+// ============================================================
+// TILE MAP
+// Hardcoded test level. Designed to test: flat running, jumps
+// of varying height (1-3 tiles), gaps of varying width (2-6
+// tiles), falling, vertical shaft climbing, and top-speed runs.
+// 40 tiles wide x 15 tiles tall. '=' is solid, '.' is empty.
+// Architecture note: storing as a flat string array instead of
+// a 2D array because it maps directly to the ASCII spec and
+// makes the level layout visually obvious in code.
+// ============================================================
+
+const TILE_SIZE = 32;
+const MAP_COLS = 40;
+const MAP_ROWS = 15;
+
+const MAP_DATA = [
+    '........................................', // row 0  (top)
+    '........................................', // row 1
+    '........................................', // row 2
+    '....====............................====', // row 3
+    '........................................', // row 4
+    '..====....====..........====............', // row 5
+    '................====....................', // row 6
+    '........................................', // row 7
+    '====........====........====....====....', // row 8
+    '........................................', // row 9
+    '....====................................', // row 10
+    '........................................', // row 11
+    '====....====....====....====....====....', // row 12
+    '........................................', // row 13
+    '========================================', // row 14 (ground)
+];
+
+// Parse map into a 2D boolean grid: true = solid tile
+const tileMap = MAP_DATA.map(row =>
+    Array.from(row).map(ch => ch === '=')
+);
+
+// ============================================================
+// GAME STATE
+// Mutable runtime state. Kept separate from constants so the
+// tuning panel only touches the constants section above.
+// ============================================================
+
+const zombie = {
+    x: 32,              // spawn position — bottom left, one tile in
+    y: (MAP_ROWS - 2) * TILE_SIZE,  // one tile above ground
+    width: 32,
+    height: 48,
+    vx: 0,
+    vy: 0,
+    grounded: false,
+    coyoteTimer: 0,      // time since last grounded (for coyote time)
+    jumpBufferTimer: 0,  // time since jump was pressed (for jump buffering)
+    wasGrounded: false,   // grounded state from previous frame
+};
+
+let sanity = 12;
+
+// Input state
+const input = {
+    left: false,
+    right: false,
+    jump: false,
+    jumpPressed: false,   // true only on the frame jump is first pressed
+    jumpHeld: false,      // true while jump key is held
+};
+
+// Drift state
+const drift = {
+    timer: 0,
+    nextInterval: 1.0,    // seconds until next drift impulse
+    inputDelayTimer: 0,   // Feral-only: remaining input delay
+    inputDelayDirection: 0, // which direction was blocked (-1 left, 1 right, 0 none)
+};
+
+// ============================================================
+// SANITY TIER HELPERS
+// Tier boundaries from paper prototype: Lucid >= 7, Slipping
+// 4-6.99, Feral 0.01-3.99, Gone = 0. These thresholds match
+// the validated MC simulation parameters.
+// ============================================================
+
+function getSanityTier(s) {
+    if (s <= 0) return 'Gone';
+    if (s < 4) return 'Feral';
+    if (s < 7) return 'Slipping';
+    return 'Lucid';
+}
+
+function getTierColor(tier) {
+    switch (tier) {
+        case 'Lucid':    return '#53d769'; // green
+        case 'Slipping': return '#ffcc00'; // yellow
+        case 'Feral':    return '#ff6b35'; // orange
+        case 'Gone':     return '#ff3333'; // red
+    }
+}
+
+function getMaxSpeed() {
+    const tier = getSanityTier(sanity);
+    if (tier === 'Feral')    return BASE_MAX_SPEED * FERAL_SPEED_MULT;
+    if (tier === 'Slipping') return BASE_MAX_SPEED * SLIPPING_SPEED_MULT;
+    return BASE_MAX_SPEED;
+}
+
+function getAcceleration() {
+    const tier = getSanityTier(sanity);
+    let accel = BASE_ACCELERATION;
+    if (tier === 'Feral')    accel *= FERAL_ACCEL_MULT;
+    if (tier === 'Slipping') accel *= SLIPPING_ACCEL_MULT;
+
+    // Reduce acceleration while airborne (air control)
+    if (!zombie.grounded) {
+        accel *= getAirControl();
+    }
+    return accel;
+}
+
+function getDeceleration() {
+    return BASE_DECELERATION;
+}
+
+function getAirControl() {
+    const tier = getSanityTier(sanity);
+    if (tier === 'Feral')    return BASE_AIR_CONTROL * FERAL_AIR_CONTROL_MULT;
+    if (tier === 'Slipping') return BASE_AIR_CONTROL * SLIPPING_AIR_CONTROL_MULT;
+    return BASE_AIR_CONTROL;
+}
+
+// ============================================================
+// INPUT HANDLING
+// Tracks key state for movement and jump. Supports both WASD
+// and arrow keys. Jump uses both space and W/Up for convenience.
+// Architecture note: we track jumpPressed (edge) separately
+// from jumpHeld (level) because variable jump height needs to
+// know when the key is released, while jump buffering needs to
+// know when it was first pressed.
+// ============================================================
+
+const keysDown = new Set();
+
+window.addEventListener('keydown', (e) => {
+    if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown',
+         'a', 'd', 'w', 's', ' '].includes(e.key)) {
+        e.preventDefault();
+    }
+    if (!keysDown.has(e.key)) {
+        keysDown.add(e.key);
+        // Edge-triggered jump detection
+        if (e.key === ' ' || e.key === 'w' || e.key === 'W' || e.key === 'ArrowUp') {
+            input.jumpPressed = true;
+        }
+    }
+});
+
+window.addEventListener('keyup', (e) => {
+    keysDown.delete(e.key);
+});
+
+// Prevent stuck keys when window loses focus
+window.addEventListener('blur', () => {
+    keysDown.clear();
+});
+
+function processInput() {
+    input.left = keysDown.has('ArrowLeft') || keysDown.has('a') || keysDown.has('A');
+    input.right = keysDown.has('ArrowRight') || keysDown.has('d') || keysDown.has('D');
+    input.jumpHeld = keysDown.has(' ') || keysDown.has('w') || keysDown.has('W') || keysDown.has('ArrowUp');
+    // jumpPressed is consumed after use — set in keydown handler, cleared in updateJump
+}
+
+// ============================================================
+// PHYSICS UPDATE
+// Core movement loop. Frame-rate independent via dt. The update
+// order matters: gravity -> input accel -> friction -> clamp ->
+// position -> collision -> jump timers. This order prevents
+// a frame of clipping after position update by resolving
+// collisions before the next render.
+// ============================================================
+
+function updatePhysics(dt) {
+    const tier = getSanityTier(sanity);
+
+    // --- Gone tier: no movement ---
+    if (tier === 'Gone') {
+        zombie.vx = 0;
+        zombie.vy = 0;
+        return;
+    }
+
+    // --- Gravity ---
+    zombie.vy += GRAVITY * dt;
+
+    // --- Horizontal input ---
+    // Feral input delay: when reversing direction, block input briefly.
+    // This makes momentum feel more committal at low sanity — the zombie's
+    // body resists changing direction (Swink: simulation weight).
+    let effectiveLeft = input.left;
+    let effectiveRight = input.right;
+
+    if (tier === 'Feral' && drift.inputDelayTimer > 0) {
+        drift.inputDelayTimer -= dt;
+        if (drift.inputDelayDirection === -1) effectiveLeft = false;
+        if (drift.inputDelayDirection === 1) effectiveRight = false;
+    }
+
+    // Check for direction reversal to trigger Feral input delay
+    if (tier === 'Feral') {
+        if (effectiveLeft && zombie.vx > 50) {
+            drift.inputDelayTimer = FERAL_INPUT_DELAY;
+            drift.inputDelayDirection = -1;
+            effectiveLeft = false;
+        } else if (effectiveRight && zombie.vx < -50) {
+            drift.inputDelayTimer = FERAL_INPUT_DELAY;
+            drift.inputDelayDirection = 1;
+            effectiveRight = false;
+        }
+    }
+
+    const accel = getAcceleration();
+    if (effectiveLeft)  zombie.vx -= accel * dt;
+    if (effectiveRight) zombie.vx += accel * dt;
+
+    // --- Friction (deceleration when no horizontal input) ---
+    if (!effectiveLeft && !effectiveRight) {
+        const friction = getDeceleration() * dt;
+        if (zombie.vx > 0)      zombie.vx = Math.max(0, zombie.vx - friction);
+        else if (zombie.vx < 0) zombie.vx = Math.min(0, zombie.vx + friction);
+    }
+
+    // --- Clamp to max speed ---
+    const maxSpeed = getMaxSpeed();
+    zombie.vx = Math.max(-maxSpeed, Math.min(maxSpeed, zombie.vx));
+
+    // --- Update position ---
+    zombie.x += zombie.vx * dt;
+    zombie.y += zombie.vy * dt;
+
+    // --- Collision resolution ---
+    resolveCollisions();
+
+    // --- Jump timers ---
+    updateJumpTimers(dt);
+
+    // --- Jump execution ---
+    updateJump();
+}
+
+// ============================================================
+// COLLISION DETECTION
+// Simple AABB vs tile grid. We resolve axes separately to avoid
+// corner-case tunneling. The zombie MUST never clip through
+// platforms — we prefer stopping movement over allowing phasing.
+// Architecture note: resolving Y before X prevents the common
+// "stuck on platform edge" bug where horizontal resolution
+// fights with gravity.
+// ============================================================
+
+function isSolid(col, row) {
+    if (col < 0 || col >= MAP_COLS || row < 0 || row >= MAP_ROWS) return false;
+    return tileMap[row][col];
+}
+
+function resolveCollisions() {
+    // Clamp to world bounds (left/right/top)
+    if (zombie.x < 0) {
+        zombie.x = 0;
+        zombie.vx = Math.max(0, zombie.vx);
+    }
+    if (zombie.x + zombie.width > MAP_COLS * TILE_SIZE) {
+        zombie.x = MAP_COLS * TILE_SIZE - zombie.width;
+        zombie.vx = Math.min(0, zombie.vx);
+    }
+    if (zombie.y < 0) {
+        zombie.y = 0;
+        zombie.vy = Math.max(0, zombie.vy);
+    }
+    // Bottom of world — place on last row
+    if (zombie.y + zombie.height > MAP_ROWS * TILE_SIZE) {
+        zombie.y = MAP_ROWS * TILE_SIZE - zombie.height;
+        zombie.vy = 0;
+        zombie.grounded = true;
+    }
+
+    zombie.grounded = false;
+
+    // Resolve vertical collisions first, then horizontal.
+    // This order prevents edge-sticking on platform corners.
+    resolveVertical();
+    resolveHorizontal();
+}
+
+function resolveVertical() {
+    // Find all tile columns the zombie overlaps
+    const left = Math.floor(zombie.x / TILE_SIZE);
+    const right = Math.floor((zombie.x + zombie.width - 1) / TILE_SIZE);
+
+    if (zombie.vy >= 0) {
+        // Falling or stationary — check below
+        const bottomRow = Math.floor((zombie.y + zombie.height - 1) / TILE_SIZE);
+        for (let col = left; col <= right; col++) {
+            if (isSolid(col, bottomRow)) {
+                zombie.y = bottomRow * TILE_SIZE - zombie.height;
+                zombie.vy = 0;
+                zombie.grounded = true;
+                break;
+            }
+        }
+    }
+
+    if (zombie.vy < 0) {
+        // Rising — check above
+        const topRow = Math.floor(zombie.y / TILE_SIZE);
+        for (let col = left; col <= right; col++) {
+            if (isSolid(col, topRow)) {
+                zombie.y = (topRow + 1) * TILE_SIZE;
+                zombie.vy = 0;
+                break;
+            }
+        }
+    }
+}
+
+function resolveHorizontal() {
+    const top = Math.floor(zombie.y / TILE_SIZE);
+    const bottom = Math.floor((zombie.y + zombie.height - 1) / TILE_SIZE);
+
+    if (zombie.vx > 0) {
+        // Moving right — check right edge
+        const rightCol = Math.floor((zombie.x + zombie.width - 1) / TILE_SIZE);
+        for (let row = top; row <= bottom; row++) {
+            if (isSolid(rightCol, row)) {
+                zombie.x = rightCol * TILE_SIZE - zombie.width;
+                zombie.vx = 0;
+                break;
+            }
+        }
+    }
+
+    if (zombie.vx < 0) {
+        // Moving left — check left edge
+        const leftCol = Math.floor(zombie.x / TILE_SIZE);
+        for (let row = top; row <= bottom; row++) {
+            if (isSolid(leftCol, row)) {
+                zombie.x = (leftCol + 1) * TILE_SIZE;
+                zombie.vx = 0;
+                break;
+            }
+        }
+    }
+}
+
+// ============================================================
+// JUMP SYSTEM
+// Implements coyote time, jump buffering, and variable jump
+// height. These three features are essential for responsive
+// platformer feel (per Swink's input responsiveness model).
+//
+// Coyote time: after walking off a ledge, the player has a
+//   brief window to still jump. Prevents "I was on the edge!"
+// Jump buffer: pressing jump slightly before landing queues
+//   the jump to fire on landing. Prevents "I pressed jump!"
+// Variable height: releasing jump early cuts upward velocity,
+//   giving short hops vs full jumps from one button.
+// ============================================================
+
+function updateJumpTimers(dt) {
+    zombie.wasGrounded = zombie.grounded;
+
+    if (zombie.grounded) {
+        zombie.coyoteTimer = 0;
+    } else {
+        zombie.coyoteTimer += dt;
+    }
+
+    if (input.jumpPressed) {
+        zombie.jumpBufferTimer = JUMP_BUFFER_TIME;
+        input.jumpPressed = false;
+    } else {
+        zombie.jumpBufferTimer = Math.max(0, zombie.jumpBufferTimer - dt);
+    }
+}
+
+function updateJump() {
+    const canJump = zombie.grounded || zombie.coyoteTimer < COYOTE_TIME;
+    const wantsJump = zombie.jumpBufferTimer > 0;
+
+    if (canJump && wantsJump) {
+        zombie.vy = JUMP_VELOCITY;
+        zombie.grounded = false;
+        zombie.coyoteTimer = COYOTE_TIME; // exhaust coyote time to prevent double jump
+        zombie.jumpBufferTimer = 0;
+    }
+
+    // Variable jump height: releasing jump early cuts upward velocity
+    if (!input.jumpHeld && zombie.vy < 0) {
+        zombie.vy *= 0.5;
+    }
+}
+
+// ============================================================
+// INPUT DRIFT
+// At lower sanity tiers, random horizontal impulses simulate
+// the zombie's body fighting the player's intentions. This is
+// the key mechanic for Thrill of Danger (Garneau/Heeter) —
+// the player should feel slightly out of control without
+// feeling cheated.
+//
+// Slipping: small, infrequent impulses (subtle wrongness)
+// Feral: larger, frequent impulses (scary loss of control)
+// ============================================================
+
+function updateDrift(dt) {
+    const tier = getSanityTier(sanity);
+
+    if (tier !== 'Slipping' && tier !== 'Feral') {
+        drift.timer = 0;
+        drift.nextInterval = 1.0;
+        return;
+    }
+
+    drift.timer += dt;
+
+    if (drift.timer >= drift.nextInterval) {
+        drift.timer = 0;
+
+        let minInterval, maxInterval, impulse;
+
+        if (tier === 'Feral') {
+            minInterval = FERAL_DRIFT_MIN_INTERVAL;
+            maxInterval = FERAL_DRIFT_MAX_INTERVAL;
+            impulse = FERAL_DRIFT_IMPULSE;
+        } else {
+            minInterval = SLIPPING_DRIFT_MIN_INTERVAL;
+            maxInterval = SLIPPING_DRIFT_MAX_INTERVAL;
+            impulse = SLIPPING_DRIFT_IMPULSE;
+        }
+
+        // Random next interval
+        drift.nextInterval = minInterval + Math.random() * (maxInterval - minInterval);
+
+        // Apply random horizontal impulse
+        const direction = Math.random() < 0.5 ? -1 : 1;
+        zombie.vx += direction * impulse;
+    }
+}
+
+// ============================================================
+// RENDERING
+// Canvas-based rendering. Tiles are drawn as colored rectangles,
+// the zombie as a green rectangle with "Z" label. Colors shift
+// by sanity tier to give visual feedback on current state.
+// Architecture note: we clear and redraw every frame rather
+// than using dirty rectangles because at 40x15 tiles the fill
+// cost is negligible and it avoids artifact bugs.
+// ============================================================
+
+const canvas = document.getElementById('game-canvas');
+const ctx = canvas.getContext('2d');
+
+// Scale canvas to map size
+canvas.width = MAP_COLS * TILE_SIZE;
+canvas.height = MAP_ROWS * TILE_SIZE;
+
+function render() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // --- Draw tiles ---
+    for (let row = 0; row < MAP_ROWS; row++) {
+        for (let col = 0; col < MAP_COLS; col++) {
+            if (tileMap[row][col]) {
+                ctx.fillStyle = '#3a506b';
+                ctx.fillRect(col * TILE_SIZE, row * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                // Subtle border for tile edges
+                ctx.strokeStyle = '#2c3e50';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(col * TILE_SIZE, row * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+            }
+        }
+    }
+
+    // --- Draw zombie ---
+    const tier = getSanityTier(sanity);
+    const zombieColor = getTierColor(tier);
+
+    ctx.fillStyle = zombieColor;
+    ctx.fillRect(zombie.x, zombie.y, zombie.width, zombie.height);
+
+    // "Z" label
+    ctx.fillStyle = '#000';
+    ctx.font = 'bold 18px Consolas, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Z', zombie.x + zombie.width / 2, zombie.y + zombie.height / 2);
+
+    // --- Draw direction indicator (small arrow showing velocity) ---
+    if (Math.abs(zombie.vx) > 10) {
+        const arrowX = zombie.vx > 0
+            ? zombie.x + zombie.width + 4
+            : zombie.x - 8;
+        const arrowDir = zombie.vx > 0 ? '>' : '<';
+        ctx.fillStyle = zombieColor;
+        ctx.font = '12px Consolas, monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(arrowDir, arrowX, zombie.y + zombie.height / 2);
+    }
+}
+
+// ============================================================
+// UI — DEBUG PANEL
+// Real-time movement diagnostics. Updates every frame. This is
+// the designer's primary tool for understanding why movement
+// feels wrong (Koster: making the system's patterns visible).
+// ============================================================
+
+const debugPanel = document.getElementById('debug-panel');
+
+function updateDebugPanel() {
+    const tier = getSanityTier(sanity);
+    const lines = [
+        `Sanity: ${sanity.toFixed(1)} (${tier})`,
+        `Velocity: (${zombie.vx.toFixed(0)}, ${zombie.vy.toFixed(0)})`,
+        `Speed: ${Math.abs(zombie.vx).toFixed(0)} / ${getMaxSpeed().toFixed(0)}`,
+        `Grounded: ${zombie.grounded}`,
+        `Coyote: ${zombie.coyoteTimer.toFixed(2)}`,
+        `Jump Buffer: ${zombie.jumpBufferTimer.toFixed(2)}`,
+        `Air Control: ${getAirControl().toFixed(2)}`,
+        `Drift Timer: ${drift.timer.toFixed(2)}`,
+        `Drift Next: ${drift.nextInterval.toFixed(2)}`,
+    ];
+
+    if (tier === 'Feral' && drift.inputDelayTimer > 0) {
+        lines.push(`Input Delay: ${drift.inputDelayTimer.toFixed(3)}`);
+    }
+
+    debugPanel.textContent = lines.join('\n');
+}
+
+// ============================================================
+// UI — SANITY SLIDER
+// The star of the UI — lets the designer instantly feel the
+// difference between tiers without code changes. Must be
+// responsive and real-time (Schell Lens #18: Flow — UI must
+// not interrupt the testing flow).
+// ============================================================
+
+const sanitySlider = document.getElementById('sanity-slider');
+const sanityLabel = document.getElementById('sanity-label');
+const goneOverlay = document.getElementById('gone-overlay');
+
+sanitySlider.addEventListener('input', () => {
+    sanity = parseFloat(sanitySlider.value);
+    updateSanityUI();
+});
+
+function updateSanityUI() {
+    const tier = getSanityTier(sanity);
+    const color = getTierColor(tier);
+    sanityLabel.textContent = `Sanity: ${sanity.toFixed(1)} (${tier})`;
+    sanityLabel.style.color = color;
+
+    // Gone overlay
+    if (tier === 'Gone') {
+        goneOverlay.classList.add('active');
+    } else {
+        goneOverlay.classList.remove('active');
+    }
+}
+
+// ============================================================
+// UI — TUNING PANEL
+// Collapsible panel with sliders for all movement constants.
+// Changes apply instantly — rapid iteration without editing
+// code. Each slider writes directly to the corresponding let
+// variable in the constants section.
+// ============================================================
+
+const tuningToggle = document.getElementById('tuning-toggle');
+const tuningPanel = document.getElementById('tuning-panel');
+
+tuningToggle.addEventListener('click', () => {
+    tuningPanel.classList.toggle('open');
+    tuningToggle.textContent = tuningPanel.classList.contains('open') ? 'Tuning ▼' : 'Tuning';
+});
+
+// Tuning parameter definitions: [label, variableName, min, max, step]
+const tuningParams = [
+    { section: 'Base Movement' },
+    { label: 'Max Speed', key: 'BASE_MAX_SPEED', min: 100, max: 600, step: 10 },
+    { label: 'Acceleration', key: 'BASE_ACCELERATION', min: 500, max: 3000, step: 50 },
+    { label: 'Deceleration', key: 'BASE_DECELERATION', min: 500, max: 3000, step: 50 },
+    { label: 'Air Control', key: 'BASE_AIR_CONTROL', min: 0, max: 1, step: 0.05 },
+
+    { section: 'Jump' },
+    { label: 'Jump Velocity', key: 'JUMP_VELOCITY', min: -800, max: -300, step: 10 },
+    { label: 'Gravity', key: 'GRAVITY', min: 800, max: 2000, step: 50 },
+    { label: 'Coyote Time', key: 'COYOTE_TIME', min: 0, max: 0.3, step: 0.01 },
+    { label: 'Jump Buffer', key: 'JUMP_BUFFER_TIME', min: 0, max: 0.3, step: 0.01 },
+
+    { section: 'Slipping Multipliers' },
+    { label: 'Speed ×', key: 'SLIPPING_SPEED_MULT', min: 1.0, max: 2.0, step: 0.05 },
+    { label: 'Accel ×', key: 'SLIPPING_ACCEL_MULT', min: 1.0, max: 2.0, step: 0.05 },
+    { label: 'Air Ctrl ×', key: 'SLIPPING_AIR_CONTROL_MULT', min: 0.1, max: 1.0, step: 0.05 },
+
+    { section: 'Feral Multipliers' },
+    { label: 'Speed ×', key: 'FERAL_SPEED_MULT', min: 1.0, max: 3.0, step: 0.1 },
+    { label: 'Accel ×', key: 'FERAL_ACCEL_MULT', min: 1.0, max: 3.0, step: 0.1 },
+    { label: 'Air Ctrl ×', key: 'FERAL_AIR_CONTROL_MULT', min: 0.1, max: 1.0, step: 0.05 },
+
+    { section: 'Drift' },
+    { label: 'Slip Impulse', key: 'SLIPPING_DRIFT_IMPULSE', min: 10, max: 200, step: 10 },
+    { label: 'Feral Impulse', key: 'FERAL_DRIFT_IMPULSE', min: 50, max: 400, step: 10 },
+    { label: 'Feral Delay', key: 'FERAL_INPUT_DELAY', min: 0, max: 0.2, step: 0.01 },
+];
+
+// We store references to the global variables via eval for live read/write.
+// Architecture note: using eval here is acceptable because the keys are
+// hardcoded string literals defined above — no user input reaches eval.
+function buildTuningPanel() {
+    let html = '';
+
+    for (const param of tuningParams) {
+        if (param.section) {
+            html += `<div class="section-label">${param.section}</div>`;
+            continue;
+        }
+
+        const currentVal = eval(param.key);
+        const id = `tune-${param.key}`;
+        html += `
+            <label>
+                <span>${param.label}</span>
+                <input type="range" id="${id}" min="${param.min}" max="${param.max}"
+                       step="${param.step}" value="${currentVal}"
+                       data-key="${param.key}">
+                <span id="${id}-val" style="min-width:45px;text-align:right">${currentVal}</span>
+            </label>
+        `;
+    }
+
+    tuningPanel.innerHTML = html;
+
+    // Attach listeners
+    for (const param of tuningParams) {
+        if (param.section) continue;
+        const id = `tune-${param.key}`;
+        const slider = document.getElementById(id);
+        const valSpan = document.getElementById(`${id}-val`);
+
+        slider.addEventListener('input', () => {
+            const val = parseFloat(slider.value);
+            // Write to the global variable
+            eval(`${param.key} = ${val}`);
+            valSpan.textContent = param.step < 1 ? val.toFixed(2) : val;
+        });
+    }
+}
+
+// ============================================================
+// GAME LOOP
+// Fixed-timestep-ish loop using requestAnimationFrame. We cap
+// dt to 0.05s (20fps minimum) to prevent the "spiral of death"
+// where large dt causes physics to explode, which causes even
+// larger dt next frame.
+// ============================================================
+
+let lastTime = 0;
+
+function gameLoop(currentTime) {
+    const deltaTime = (currentTime - lastTime) / 1000;
+    lastTime = currentTime;
+
+    // Cap dt to prevent physics explosion on tab-switch or lag spike
+    const dt = Math.min(deltaTime, 0.05);
+
+    // Skip the first frame (deltaTime would be huge)
+    if (deltaTime > 0 && deltaTime < 1) {
+        processInput();
+        updatePhysics(dt);
+        updateDrift(dt);
+        render();
+        updateDebugPanel();
+        updateSanityUI();
+    }
+
+    requestAnimationFrame(gameLoop);
+}
+
+// ============================================================
+// INITIALIZATION
+// Set up everything and start the loop. Canvas is already sized
+// in the rendering section. Tuning panel is built dynamically.
+// ============================================================
+
+function init() {
+    buildTuningPanel();
+    updateSanityUI();
+
+    // Position zombie on the ground at start
+    // Find the ground level at spawn column
+    zombie.x = TILE_SIZE; // one tile from left edge
+    for (let row = MAP_ROWS - 1; row >= 0; row--) {
+        if (tileMap[row][Math.floor(zombie.x / TILE_SIZE)]) {
+            zombie.y = row * TILE_SIZE - zombie.height;
+            break;
+        }
+    }
+
+    requestAnimationFrame(gameLoop);
+}
+
+init();
+</script>
+</body>
+</html>
