@@ -222,12 +222,12 @@ canvas {
 
 // --- Base movement (Lucid tier) ---
 let BASE_MAX_SPEED = 300;          // px/s — top horizontal speed
-let BASE_ACCELERATION = 2400;      // px/s² — how fast we reach max speed (was 1800, bumped for snappier starts)
+let BASE_ACCELERATION = 2800;      // px/s² — how fast we reach max speed (was 2400, bumped for snappier starts)
 let BASE_DECELERATION = 3200;      // px/s² — friction when no input
 let BASE_AIR_CONTROL = 0.8;        // multiplier on accel while airborne
 
 // --- Jump ---
-let JUMP_VELOCITY = -600;          // px/s — initial upward velocity (negative = up)
+let JUMP_VELOCITY = -650;          // px/s — initial upward velocity (negative = up, was -600)
 let GRAVITY = 1400;                // px/s² — downward pull
 let COYOTE_TIME = 0.1;            // seconds — grace period after leaving ground
 let JUMP_BUFFER_TIME = 0.1;       // seconds — pre-landing jump input memory
@@ -238,7 +238,7 @@ let JUMP_BUFFER_TIME = 0.1;       // seconds — pre-landing jump input memory
 // the FERAL_*_MULT × base. Linear interpolation between. This
 // eliminates dead zones where the slider does nothing (playtest
 // finding: tier-stepped values made the progression feel flat).
-let FERAL_SPEED_MULT = 1.5;       // max speed at sanity 0
+let FERAL_SPEED_MULT = 1.7;       // max speed at sanity 0 (was 1.5)
 let FERAL_ACCEL_MULT = 1.6;       // acceleration at sanity 0
 let FERAL_AIR_CONTROL_MULT = 0.5; // air control at sanity 0 (0.8 * 0.5 = 0.4)
 let FERAL_JUMP_MULT = 1.6;        // jump strengthens as sanity drops
@@ -257,7 +257,7 @@ let FERAL_GRAVITY_MULT = 1.15;    // gravity increases as sanity drops (tighter 
 // Position nudge + velocity residue replaces pure velocity impulse
 // so both same-direction and reverse drift are visible.
 let DRIFT_BASE_IMPULSE = 500;            // max impulse (px/s equivalent) at sanity 0
-let DRIFT_MIN_INTERVAL = 0.8;            // shortest interval between drifts (at sanity 0)
+let DRIFT_MIN_INTERVAL = 1.0;            // shortest interval between drifts (at sanity 0, was 0.8)
 let DRIFT_MAX_INTERVAL = 5.0;            // longest interval (at sanity 12, effectively never)
 let DRIFT_IMPULSE_EXPONENT = 2;          // curve shape: higher = gentler start, sharper end
 let DRIFT_AIRBORNE_MULT = 2.0;           // impulse multiplier while not grounded

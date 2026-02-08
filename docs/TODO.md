@@ -119,7 +119,14 @@
   - PACING_ENABLED toggle preserves old random behavior
   - PACING_DIFFICULTY_SCALE slider (0.5-1.5) for easier/harder levels
   - UI: Pacing checkbox + Difficulty Scale slider in tuning panel
-- [ ] Step 1.4: Toy validation playtest
+- [x] Step 1.4: Toy validation playtest
+  - Lucid: sluggish start + weak jump → bumped BASE_ACCELERATION 2400→2800, JUMP_VELOCITY -600→-650
+  - Slipping: good drift balance (pass)
+  - Feral: needed more speed, less drift → FERAL_SPEED_MULT 1.5→1.7, DRIFT_MIN_INTERVAL 0.8→1.0
+  - Progression 12→0: initially steppy, resolved by tuning pass
+  - Juice systems: all pass (squash/dust, drift VFX, speed lines)
+  - Generator pacing: subtle arc, clean layouts (pass)
+  - Verdict: ready for Sprint 1
 
 ## Upcoming
 - Sprint 1: Game systems foundation (sanity drain, health, brain pickups)

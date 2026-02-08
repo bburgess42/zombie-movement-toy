@@ -1,6 +1,6 @@
 # Zombie Movement Toy — Current State
 
-**Version:** Step 1.3 complete (pacing upgrade)
+**Version:** Phase 1 complete (movement feel pass)
 **Last updated:** Feb 2026
 
 ## Overview
@@ -127,22 +127,22 @@ Tier layout:
 | Constant | Value | Unit |
 |----------|-------|------|
 | BASE_MAX_SPEED | 300 | px/s |
-| BASE_ACCELERATION | 2400 | px/s² |
+| BASE_ACCELERATION | 2800 | px/s² |
 | BASE_DECELERATION | 3200 | px/s² |
 | BASE_AIR_CONTROL | 0.8 | multiplier |
-| JUMP_VELOCITY | -600 | px/s |
+| JUMP_VELOCITY | -650 | px/s |
 | GRAVITY | 1400 | px/s² |
 | COYOTE_TIME | 0.1 | seconds |
 | JUMP_BUFFER_TIME | 0.1 | seconds |
 | TILE_SIZE | 32 | px |
-| FERAL_SPEED_MULT | 1.5 | multiplier (sanity-interpolated) |
+| FERAL_SPEED_MULT | 1.7 | multiplier (sanity-interpolated) |
 | FERAL_ACCEL_MULT | 1.6 | multiplier (sanity-interpolated) |
 | FERAL_AIR_CONTROL_MULT | 0.5 | multiplier (sanity-interpolated) |
 | FERAL_JUMP_MULT | 1.6 | multiplier (sanity-interpolated) |
 | FERAL_DECEL_MULT | 0.5 | multiplier (sanity-interpolated) |
 | FERAL_GRAVITY_MULT | 1.15 | multiplier (sanity-interpolated) |
 | DRIFT_BASE_IMPULSE | 500 | px/s equivalent (max at sanity 0) |
-| DRIFT_MIN_INTERVAL | 0.8 | seconds (shortest, at sanity 0) |
+| DRIFT_MIN_INTERVAL | 1.0 | seconds (shortest, at sanity 0) |
 | DRIFT_MAX_INTERVAL | 5.0 | seconds (longest, at sanity 12) |
 | DRIFT_IMPULSE_EXPONENT | 2 | curve shape (t² = gentle start) |
 | DRIFT_AIRBORNE_MULT | 2.0 | multiplier (while not grounded) |
