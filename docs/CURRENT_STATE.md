@@ -1,6 +1,6 @@
 # Zombie Movement Toy — Current State
 
-**Version:** Phase 1 complete (movement feel pass)
+**Version:** Sprint 1 complete (game systems foundation)
 **Last updated:** Feb 2026
 
 ## Overview
@@ -88,12 +88,50 @@ Four feedback systems that close Swink's simulation → feedback loop. Without t
 - **Drift directional vignette**: One-sided tier-colored flash on the side drift pushed toward. Fades over 0.15s. Opacity scales with impulse strength (skips if < 50 px/s). Communicates drift direction to the player.
 - **Speed lines** (Phase C): 1-2 faint horizontal lines trail behind the zombie when |vx| > 80% of max speed. Tier-colored, opacity and count ramp with speed. Shimmer per frame via random y-offsets. Drawn behind zombie, inside shake transform.
 
+### GameState + Phase Machine (Sprint 1)
+Centralized `GameState` object (Strangler Fig migration). References existing globals — bare `zombie` and `sanity` remain as sources of truth during Sprint 1. New systems read/write through GameState.
+
+- **Phases**: PLAYING, GAME_OVER_SANITY ("MIND LOST"), GAME_OVER_HP ("GAME OVER")
+- **Game loop gate**: Update systems only run when `GameState.phase === 'PLAYING'`
+- **Restart**: R key in any game-over state calls `resetGameState()`
+- **Stats tracking**: `timeElapsed`, `civiliansEaten`, `damagesTaken`
+
+### Health System (Sprint 1)
+- `zombie.hp` / `zombie.maxHP` (default 5)
+- `damageZombie(state, amount)` — iframes check, reduce HP, set invincibleTimer, shake
+- `updateHealth(state, dt)` — decrements invincibleTimer
+- HP=0 → GAME_OVER_HP phase (orange overlay, distinct from red MIND LOST)
+- HP checked before sanity in phase transitions (edge case #3)
+- Iframe flash: alternating alpha (1.0/0.3) every 0.1s during invincibility
+
+### Sanity Drain (Sprint 1)
+- `SANITY_DRAIN_RATE` (0.15/s) — continuous drain when enabled
+- "Auto Drain" checkbox in sanity bar (OFF by default = toy mode)
+- `updateSanityDrain(state, dt)` — decrements bare `sanity` global, syncs slider
+- Sanity=0 → GAME_OVER_SANITY phase
+
+### Civilian System (Sprint 1)
+- `createCivilian(x, y)` — factory returning flat data object
+- 5 civilians placed on Gauntlet platforms (2 ground, 1 Lucid, 2 Slipping)
+- AI priority: FLEE zombie (within 96px, 60 px/s) > WANDER (30 px/s, random direction)
+- Edge avoidance: ground-ahead + wall-ahead checks, reverse at edges
+- Rendered as cyan rectangles ("C" label), orange when fleeing
+
+### Eat Collision + Death Scream (Sprint 1)
+- `aabbOverlap(a, b)` — shared AABB utility
+- `checkEatCollision(state)` — overlap → civilian dies, sanity +4 (cap 12)
+- `broadcastScream(state, x, y)` — visual shake + console log (Sprint 2: threat alerting)
+- Particle burst + screen shake on eat
+- Eating at full sanity wastes restore but still triggers scream
+
 ### UI
 - **Sanity slider**: top bar, range 0-12, real-time, shows value + tier name
-- **Debug panel**: top-right overlay, monospace, shows velocity/grounded/coyote/buffer/air control/drift
-- **Tuning panel**: collapsible left panel with sliders for all movement constants + juice params + level generator controls
-- **Gone overlay**: "MIND LOST" text when sanity = 0
-- **Controls hint**: bottom text showing key bindings
+- **Auto Drain checkbox**: next to slider, toggles continuous sanity drain
+- **Debug panel**: top-right overlay, monospace, shows phase/HP/civilians + velocity/grounded/coyote/buffer/air control/drift
+- **Tuning panel**: collapsible left panel with sliders for all movement constants + juice params + level generator + sanity system + health + civilian AI
+- **Gone overlay**: "MIND LOST" text on GAME_OVER_SANITY phase
+- **HP overlay**: "GAME OVER" text (orange) on GAME_OVER_HP phase
+- **Controls hint**: bottom text showing key bindings (including R to restart)
 
 ### Sanity Sliding Scales
 ALL movement parameters interpolate smoothly across the full 0-12 sanity range via `getSanityT()`. At sanity 12 the zombie gets base values; at sanity 0 it gets the FERAL_*_MULT × base. No tier stepping — every tick of the slider changes feel. This eliminates dead zones where the slider does nothing (playtest finding: tier-stepped values made progression feel flat).
@@ -168,6 +206,20 @@ Tier layout:
 | PACING_DIFFICULTY_SCALE | 1.0 | multiplier (0.5-1.5) |
 | MAP_COLS | 40 (default) | tiles (mutable, 20-60) |
 | MAP_ROWS | 25 (default) | tiles (mutable, 15-35) |
+| **Sanity System** | | |
+| SANITY_DRAIN_RATE | 0.15 | sanity/s (continuous drain) |
+| SANITY_PER_EAT | 4 | sanity restored per civilian |
+| SCREAM_ALERT_RANGE | 128 | px (death scream radius) |
+| SCREAM_ALERT_DURATION | 3.0 | seconds (Sprint 2) |
+| **Health** | | |
+| ZOMBIE_MAX_HP | 5 | hit points |
+| ZOMBIE_START_HP | 5 | hit points |
+| INVINCIBILITY_DURATION | 0.75 | seconds (iframes) |
+| **Civilian AI** | | |
+| CIVILIAN_FLEE_SPEED | 60 | px/s |
+| CIVILIAN_FLEE_RANGE | 96 | px (flee trigger distance) |
+| CIVILIAN_SEEK_RANGE | 128 | px (placeholder for Sprint 2) |
+| CIVILIAN_WANDER_SPEED | 30 | px/s |
 
 ## File Structure
 

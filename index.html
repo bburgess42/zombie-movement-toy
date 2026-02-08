@@ -133,7 +133,7 @@ canvas {
     padding-bottom: 2px;
 }
 
-/* --- Gone overlay --- */
+/* --- Gone overlay (sanity game over) --- */
 #gone-overlay {
     position: absolute;
     top: 0; left: 0; right: 0; bottom: 0;
@@ -153,6 +153,38 @@ canvas {
     font-family: 'Consolas', monospace;
     letter-spacing: 8px;
 }
+
+/* --- HP game over overlay --- */
+#game-over-hp-overlay {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    display: none;
+    justify-content: center;
+    align-items: center;
+    background: rgba(0, 0, 0, 0.6);
+    pointer-events: none;
+    z-index: 20;
+}
+#game-over-hp-overlay.active { display: flex; }
+#game-over-hp-overlay span {
+    font-size: 64px;
+    font-weight: bold;
+    color: #ff6b35;
+    text-shadow: 0 0 30px #ff6b35, 0 0 60px #884400;
+    font-family: 'Consolas', monospace;
+    letter-spacing: 8px;
+}
+
+/* --- Auto drain checkbox --- */
+#drain-toggle {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    white-space: nowrap;
+    cursor: pointer;
+}
+#drain-toggle input { cursor: pointer; }
 
 /* --- Level Generator controls in tuning panel --- */
 .gen-seed-input {
@@ -198,6 +230,7 @@ canvas {
 <div id="sanity-bar">
     <label id="sanity-label">Sanity: 12.0 (Lucid)</label>
     <input type="range" id="sanity-slider" min="0" max="12" step="0.1" value="12">
+    <label id="drain-toggle"><input type="checkbox" id="drain-checkbox">Auto Drain</label>
 </div>
 
 <div id="game-container">
@@ -206,10 +239,11 @@ canvas {
     <button id="tuning-toggle">Tuning</button>
     <div id="tuning-panel"></div>
     <div id="gone-overlay"><span>MIND LOST</span></div>
+    <div id="game-over-hp-overlay"><span>GAME OVER</span></div>
 </div>
 
 <div id="controls-hint">
-    WASD or Arrow Keys to move &bull; Space to jump &bull; Slider to change sanity tier
+    WASD or Arrow Keys to move &bull; Space to jump &bull; R to restart &bull; Slider to change sanity tier
 </div>
 
 <script>
@@ -290,6 +324,25 @@ let SPEED_LINE_THRESHOLD = 0.8;         // fraction of max speed to start showin
 let SPEED_LINE_OPACITY = 0.3;           // max opacity of speed lines
 let PACING_ENABLED = true;
 let PACING_DIFFICULTY_SCALE = 1.0;      // 0.5=easier, 1.5=harder
+
+// --- Sanity drain ---
+let SANITY_DRAIN_RATE = 0.15;           // sanity lost per second (continuous)
+
+// --- Health system ---
+let ZOMBIE_MAX_HP = 5;                  // max hit points
+let ZOMBIE_START_HP = 5;               // HP at level start
+let INVINCIBILITY_DURATION = 0.75;     // seconds of iframes after taking damage
+
+// --- Civilian system ---
+let CIVILIAN_FLEE_SPEED = 60;          // px/s — flee movement speed
+let CIVILIAN_FLEE_RANGE = 96;          // px — distance at which civilian begins fleeing
+let CIVILIAN_SEEK_RANGE = 128;         // px — distance within which civilian drifts toward threat (placeholder)
+let CIVILIAN_WANDER_SPEED = 30;        // px/s — idle movement speed
+
+// --- Eat + death scream ---
+let SANITY_PER_EAT = 4;               // sanity restored per civilian eaten
+let SCREAM_ALERT_RANGE = 128;          // px — death scream alert radius
+let SCREAM_ALERT_DURATION = 3.0;       // seconds — threat investigation time (Sprint 2)
 
 // ============================================================
 // TILE MAP
@@ -917,6 +970,8 @@ function applyLevel(grid, width, height) {
     MAP_DATA = grid.map(row => row.map(v => v ? '=' : '.').join(''));
     resizeCanvas();
     findAndSetSpawn();
+    // Clear civilians (Gauntlet placement only works on Gauntlet map)
+    if (typeof GameState !== 'undefined') GameState.entities.civilians = [];
 }
 
 /** Restore the hardcoded Sanity Gauntlet map */
@@ -927,6 +982,8 @@ function loadPresetGauntlet() {
     tileMap = MAP_DATA.map(row => Array.from(row).map(ch => ch === '='));
     resizeCanvas();
     findAndSetSpawn();
+    // Repopulate civilians for the Gauntlet map
+    if (typeof placeCiviliansOnGauntlet === 'function') placeCiviliansOnGauntlet();
     // Update generator sliders to match
     const ws = document.getElementById('gen-width');
     const hs = document.getElementById('gen-height');
@@ -973,6 +1030,9 @@ const zombie = {
     scaleX: 1,            // squash/stretch horizontal (1.0 = normal)
     scaleY: 1,            // squash/stretch vertical (1.0 = normal)
     lastVy: 0,            // vy at moment of landing (for intensity scaling)
+    hp: 5,               // current hit points
+    maxHP: 5,            // maximum hit points
+    invincibleTimer: 0,  // seconds of iframes remaining
 };
 
 let sanity = 12;
@@ -1011,6 +1071,339 @@ const camera = {
     shakeTimer: 0,
     shakeBiasX: 0,        // directional bias (-1 left, 0 neutral, 1 right)
 };
+
+// ============================================================
+// GAME STATE
+// Centralized state object (Strangler Fig migration steps 0+1).
+// References existing globals for now — bare `zombie` and `sanity`
+// remain as sources of truth during Sprint 1. New systems read/write
+// through GameState; existing systems read globals directly.
+// ============================================================
+
+let GameState = {
+    phase: 'PLAYING',
+    zombie: zombie,
+    sanity: {
+        value: sanity,
+        maxValue: 12,
+        drainEnabled: false,   // off by default (toy mode preserved)
+    },
+    entities: {
+        civilians: [],
+    },
+    level: {
+        tileMap: tileMap,
+        cols: MAP_COLS,
+        rows: MAP_ROWS,
+    },
+    stats: {
+        timeElapsed: 0,
+        civiliansEaten: 0,
+        damagesTaken: 0,
+    },
+};
+
+// ============================================================
+// GAME PHASE MACHINE
+// Manages state transitions. Gates which update systems run per
+// phase. The game loop keeps running in ALL phases — only update
+// systems are gated behind PLAYING. Rendering always runs.
+// ============================================================
+
+const gameOverHpOverlay = document.getElementById('game-over-hp-overlay');
+const goneOverlay = document.getElementById('gone-overlay');
+
+function updateGamePhase(state) {
+    switch (state.phase) {
+        case 'PLAYING':
+            // End-condition checks: HP before sanity (edge case #3)
+            if (state.zombie.hp <= 0) {
+                state.phase = 'GAME_OVER_HP';
+                break;
+            }
+            if (sanity <= 0) {
+                state.phase = 'GAME_OVER_SANITY';
+                break;
+            }
+            break;
+
+        case 'GAME_OVER_SANITY':
+            goneOverlay.classList.add('active');
+            if (keysDown.has('r') || keysDown.has('R')) {
+                resetGameState();
+            }
+            break;
+
+        case 'GAME_OVER_HP':
+            gameOverHpOverlay.classList.add('active');
+            if (keysDown.has('r') || keysDown.has('R')) {
+                resetGameState();
+            }
+            break;
+    }
+}
+
+function resetGameState() {
+    // Reset zombie
+    findAndSetSpawn();
+    zombie.hp = ZOMBIE_MAX_HP;
+    zombie.maxHP = ZOMBIE_MAX_HP;
+    zombie.invincibleTimer = 0;
+    zombie.scaleX = 1;
+    zombie.scaleY = 1;
+    zombie.jumpCut = false;
+    zombie.coyoteTimer = 0;
+    zombie.jumpBufferTimer = 0;
+    zombie.wasGrounded = false;
+    zombie.lastVy = 0;
+
+    // Reset sanity
+    sanity = 12;
+    GameState.sanity.value = 12;
+    sanitySlider.value = 12;
+
+    // Reset entities
+    GameState.entities.civilians = [];
+    placeCiviliansOnGauntlet();
+
+    // Reset stats
+    GameState.stats.timeElapsed = 0;
+    GameState.stats.civiliansEaten = 0;
+    GameState.stats.damagesTaken = 0;
+
+    // Reset drift
+    drift.timer = 0;
+    drift.nextInterval = 1.0;
+    drift.inputDelayTimer = 0;
+    drift.inputDelayDirection = 0;
+    drift.flashTimer = 0;
+    drift.flashDirection = 0;
+    drift.lastImpulse = 0;
+
+    // Clear particles and shake
+    particles.length = 0;
+    camera.shakeX = 0;
+    camera.shakeY = 0;
+    camera.shakeIntensity = 0;
+    camera.shakeDuration = 0;
+    camera.shakeTimer = 0;
+    camera.shakeBiasX = 0;
+
+    // Clear overlays
+    goneOverlay.classList.remove('active');
+    gameOverHpOverlay.classList.remove('active');
+
+    // Resume play
+    GameState.phase = 'PLAYING';
+
+    updateSanityUI();
+}
+
+// ============================================================
+// HEALTH SYSTEM
+// HP tracking, damage with invincibility frames, iframe timer.
+// ============================================================
+
+function damageZombie(state, amount) {
+    if (state.zombie.invincibleTimer > 0) return;
+    state.zombie.hp = Math.max(0, state.zombie.hp - amount);
+    state.zombie.invincibleTimer = INVINCIBILITY_DURATION;
+    state.stats.damagesTaken++;
+    triggerShake(3, 0.1);
+}
+
+function updateHealth(state, dt) {
+    if (state.zombie.invincibleTimer > 0) {
+        state.zombie.invincibleTimer = Math.max(0, state.zombie.invincibleTimer - dt);
+    }
+}
+
+// ============================================================
+// SANITY DRAIN
+// Continuous sanity drain when auto-drain is enabled.
+// ============================================================
+
+function updateSanityDrain(state, dt) {
+    if (!state.sanity.drainEnabled) return;
+    sanity = Math.max(0, sanity - SANITY_DRAIN_RATE * dt);
+    state.sanity.value = sanity;
+    sanitySlider.value = sanity;
+}
+
+// ============================================================
+// CIVILIAN SYSTEM
+// Civilian entities with flee/seek/wander AI. Civilians are the
+// zombie's food source — walking, fleeing rectangles that must
+// be caught and eaten to restore sanity.
+// ============================================================
+
+function createCivilian(x, y) {
+    return {
+        x: x, y: y,
+        width: 24, height: 24,
+        vx: 0,
+        alive: true,
+        state: 'WANDER',
+        facingRight: Math.random() < 0.5,
+        wanderTimer: 0,
+    };
+}
+
+/** Find all valid standing positions on the current tile map.
+ *  A valid position is an empty tile with a solid tile directly below. */
+function findStandingPositions() {
+    const positions = [];
+    for (let row = 1; row < MAP_ROWS; row++) {
+        for (let col = 1; col < MAP_COLS - 1; col++) {
+            if (!tileMap[row][col] && tileMap[row + 1] && isSolid(col, row + 1)) {
+                positions.push({ col, row });
+            }
+        }
+    }
+    return positions;
+}
+
+/** Place 5 civilians on valid ground positions, spread across the map */
+function placeCiviliansOnGauntlet() {
+    GameState.entities.civilians = [];
+    const positions = findStandingPositions();
+    if (positions.length === 0) return;
+
+    // Sort by column so we can spread civilians across the map
+    positions.sort((a, b) => a.col - b.col);
+
+    // Pick 5 evenly spaced positions
+    const count = Math.min(5, positions.length);
+    for (let i = 0; i < count; i++) {
+        const idx = Math.floor((i + 0.5) * positions.length / count);
+        const pos = positions[idx];
+        const px = pos.col * TILE_SIZE + (TILE_SIZE - 24) / 2;
+        const py = pos.row * TILE_SIZE + TILE_SIZE - 24;
+        GameState.entities.civilians.push(createCivilian(px, py));
+    }
+}
+
+function updateCivilians(state, dt) {
+    for (const civ of state.entities.civilians) {
+        if (!civ.alive) continue;
+
+        const dx = state.zombie.x + state.zombie.width / 2 - (civ.x + civ.width / 2);
+        const dy = state.zombie.y + state.zombie.height / 2 - (civ.y + civ.height / 2);
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        // AI priority: FLEE > SEEK (placeholder) > WANDER
+        if (dist < CIVILIAN_FLEE_RANGE) {
+            civ.state = 'FLEE';
+            // Flee away from zombie
+            const fleeDir = dx > 0 ? -1 : 1;
+            civ.vx = fleeDir * CIVILIAN_FLEE_SPEED;
+            civ.facingRight = fleeDir > 0;
+        } else {
+            // WANDER: slow random patrol
+            civ.state = 'WANDER';
+            civ.wanderTimer -= dt;
+            if (civ.wanderTimer <= 0) {
+                civ.facingRight = Math.random() < 0.5;
+                civ.wanderTimer = 1.5 + Math.random() * 2.0;
+            }
+            civ.vx = (civ.facingRight ? 1 : -1) * CIVILIAN_WANDER_SPEED;
+        }
+
+        // Edge avoidance: check ground ahead and wall ahead
+        const moveDir = civ.vx > 0 ? 1 : -1;
+        const checkX = moveDir > 0 ? civ.x + civ.width : civ.x - 1;
+        const checkCol = Math.floor(checkX / TILE_SIZE);
+        const footRow = Math.floor((civ.y + civ.height) / TILE_SIZE);
+        const headRow = Math.floor(civ.y / TILE_SIZE);
+
+        // No ground ahead — reverse
+        const hasGround = checkCol >= 0 && checkCol < MAP_COLS && footRow < MAP_ROWS && isSolid(checkCol, footRow);
+        // Wall ahead — reverse
+        const hasWall = checkCol >= 0 && checkCol < MAP_COLS && isSolid(checkCol, headRow);
+
+        if (!hasGround || hasWall) {
+            civ.vx = -civ.vx;
+            civ.facingRight = !civ.facingRight;
+            if (civ.state === 'WANDER') {
+                civ.wanderTimer = 1.0 + Math.random() * 1.5;
+            }
+        }
+
+        // Apply movement
+        civ.x += civ.vx * dt;
+
+        // World boundary clamp
+        if (civ.x < 0) { civ.x = 0; civ.vx = Math.abs(civ.vx); civ.facingRight = true; }
+        if (civ.x + civ.width > MAP_COLS * TILE_SIZE) {
+            civ.x = MAP_COLS * TILE_SIZE - civ.width;
+            civ.vx = -Math.abs(civ.vx);
+            civ.facingRight = false;
+        }
+    }
+}
+
+function renderCivilians(state) {
+    for (const civ of state.entities.civilians) {
+        if (!civ.alive) continue;
+        // Orange when fleeing, cyan when wandering
+        ctx.fillStyle = civ.state === 'FLEE' ? '#ff6b35' : '#00ddff';
+        ctx.fillRect(civ.x, civ.y, civ.width, civ.height);
+        // "C" label
+        ctx.fillStyle = '#000';
+        ctx.font = 'bold 14px Consolas, monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('C', civ.x + civ.width / 2, civ.y + civ.height / 2);
+    }
+}
+
+// ============================================================
+// EAT COLLISION + DEATH SCREAM
+// AABB overlap check for zombie eating civilians. On eat:
+// civilian dies, sanity restores, death scream broadcasts.
+// ============================================================
+
+function aabbOverlap(a, b) {
+    return a.x < b.x + b.width &&
+           a.x + a.width > b.x &&
+           a.y < b.y + b.height &&
+           a.y + a.height > b.y;
+}
+
+function checkEatCollision(state) {
+    for (const civ of state.entities.civilians) {
+        if (!civ.alive) continue;
+        if (aabbOverlap(state.zombie, civ)) {
+            // Consume civilian
+            civ.alive = false;
+
+            // Restore sanity (cap at 12)
+            sanity = Math.min(12, sanity + SANITY_PER_EAT);
+            state.sanity.value = sanity;
+            sanitySlider.value = sanity;
+
+            // Stats
+            state.stats.civiliansEaten++;
+
+            // Death scream
+            broadcastScream(state, civ.x + civ.width / 2, civ.y + civ.height / 2);
+
+            // Visual feedback: particles + shake
+            emitDust(civ.x + civ.width / 2, civ.y + civ.height / 2, 6, 0, 60);
+            triggerShake(2, 0.1);
+
+            // Update sanity UI immediately
+            updateSanityUI();
+        }
+    }
+}
+
+function broadcastScream(state, x, y) {
+    // Sprint 1: visual shake + console log only
+    // Threat alerting will be added in Sprint 2
+    triggerShake(1.5, 0.08);
+    console.log(`Death scream at (${x.toFixed(0)}, ${y.toFixed(0)}) — ${state.stats.civiliansEaten} civilians eaten`);
+}
 
 // ============================================================
 // SANITY TIER HELPERS
@@ -1118,7 +1511,7 @@ const keysDown = new Set();
 
 window.addEventListener('keydown', (e) => {
     if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown',
-         'a', 'd', 'w', 's', ' '].includes(e.key)) {
+         'a', 'd', 'w', 's', ' ', 'r', 'R'].includes(e.key)) {
         e.preventDefault();
     }
     if (!keysDown.has(e.key)) {
@@ -1158,8 +1551,8 @@ function processInput() {
 function updatePhysics(dt) {
     const tier = getSanityTier(sanity);
 
-    // --- Gone tier: no movement ---
-    if (tier === 'Gone') {
+    // --- Gone state: no movement (phase machine handles game over) ---
+    if (GameState.phase !== 'PLAYING') {
         zombie.vx = 0;
         zombie.vy = 0;
         return;
@@ -1800,6 +2193,9 @@ function render() {
     // --- Speed lines (behind zombie, only at high speed) ---
     renderSpeedLines();
 
+    // --- Draw civilians (behind zombie in z-order) ---
+    renderCivilians(GameState);
+
     // --- Draw zombie with squash/stretch ---
     const tier = getSanityTier(sanity);
     let zombieColor = getTierColor(tier);
@@ -1839,6 +2235,12 @@ function render() {
         ctx.translate(jitterX, jitterY);
     }
 
+    // Iframe flash: alternate alpha every 0.1s during invincibility
+    if (zombie.invincibleTimer > 0) {
+        const flashCycle = Math.floor(zombie.invincibleTimer / 0.1);
+        ctx.globalAlpha = flashCycle % 2 === 0 ? 1.0 : 0.3;
+    }
+
     ctx.fillStyle = zombieColor;
     ctx.fillRect(zombie.x, zombie.y, zombie.width, zombie.height);
 
@@ -1862,6 +2264,9 @@ function render() {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('Z', zombie.x + zombie.width / 2, zombie.y + zombie.height / 2);
+
+    // Restore alpha after iframe flash
+    ctx.globalAlpha = 1.0;
 
     ctx.restore(); // end squash/stretch transform
 
@@ -1900,8 +2305,12 @@ const debugPanel = document.getElementById('debug-panel');
 
 function updateDebugPanel() {
     const tier = getSanityTier(sanity);
+    const aliveCivs = GameState.entities.civilians.filter(c => c.alive).length;
     const lines = [
-        `Sanity: ${sanity.toFixed(1)} (${tier})`,
+        `Phase: ${GameState.phase}`,
+        `Sanity: ${sanity.toFixed(1)} (${tier})${GameState.sanity.drainEnabled ? ' [DRAIN]' : ''}`,
+        `HP: ${zombie.hp} / ${zombie.maxHP}${zombie.invincibleTimer > 0 ? ' [IFRAME]' : ''}`,
+        `Civilians: ${aliveCivs} alive, ${GameState.stats.civiliansEaten} eaten`,
         `Velocity: (${zombie.vx.toFixed(0)}, ${zombie.vy.toFixed(0)})`,
         `Speed: ${Math.abs(zombie.vx).toFixed(0)} / ${getMaxSpeed().toFixed(0)}`,
         `Grounded: ${zombie.grounded}`,
@@ -1933,11 +2342,16 @@ function updateDebugPanel() {
 
 const sanitySlider = document.getElementById('sanity-slider');
 const sanityLabel = document.getElementById('sanity-label');
-const goneOverlay = document.getElementById('gone-overlay');
+const drainCheckbox = document.getElementById('drain-checkbox');
 
 sanitySlider.addEventListener('input', () => {
     sanity = parseFloat(sanitySlider.value);
+    GameState.sanity.value = sanity;
     updateSanityUI();
+});
+
+drainCheckbox.addEventListener('change', () => {
+    GameState.sanity.drainEnabled = drainCheckbox.checked;
 });
 
 function updateSanityUI() {
@@ -1946,12 +2360,8 @@ function updateSanityUI() {
     sanityLabel.textContent = `Sanity: ${sanity.toFixed(1)} (${tier})`;
     sanityLabel.style.color = color;
 
-    // Gone overlay
-    if (tier === 'Gone') {
-        goneOverlay.classList.add('active');
-    } else {
-        goneOverlay.classList.remove('active');
-    }
+    // Gone overlay controlled by GameState.phase, not tier
+    // (phase machine handles showing/hiding overlays)
 }
 
 // ============================================================
@@ -2012,6 +2422,21 @@ const tuningParams = [
     { label: 'Vignette', key: 'VIGNETTE_MAX_OPACITY', min: 0, max: 0.5, step: 0.05 },
     { label: 'Spd Thresh', key: 'SPEED_LINE_THRESHOLD', min: 0.5, max: 1.0, step: 0.05 },
     { label: 'Spd Opacity', key: 'SPEED_LINE_OPACITY', min: 0, max: 0.6, step: 0.05 },
+
+    { section: 'Sanity System' },
+    { label: 'Drain Rate', key: 'SANITY_DRAIN_RATE', min: 0.05, max: 0.5, step: 0.01 },
+    { label: 'Per Eat', key: 'SANITY_PER_EAT', min: 1, max: 8, step: 1 },
+    { label: 'Scream Range', key: 'SCREAM_ALERT_RANGE', min: 32, max: 256, step: 16 },
+    { label: 'Scream Dur', key: 'SCREAM_ALERT_DURATION', min: 1.0, max: 6.0, step: 0.5 },
+
+    { section: 'Health' },
+    { label: 'Max HP', key: 'ZOMBIE_MAX_HP', min: 1, max: 10, step: 1 },
+    { label: 'Iframe Dur', key: 'INVINCIBILITY_DURATION', min: 0.25, max: 2.0, step: 0.05 },
+
+    { section: 'Civilian AI' },
+    { label: 'Flee Speed', key: 'CIVILIAN_FLEE_SPEED', min: 20, max: 150, step: 5 },
+    { label: 'Flee Range', key: 'CIVILIAN_FLEE_RANGE', min: 32, max: 192, step: 8 },
+    { label: 'Wander Spd', key: 'CIVILIAN_WANDER_SPEED', min: 10, max: 80, step: 5 },
 ];
 
 // We store references to the global variables via eval for live read/write.
@@ -2073,6 +2498,10 @@ function buildTuningPanel() {
             <button onclick="doRandomGenerate()">Random</button>
             <button onclick="loadPresetGauntlet()">Gauntlet</button>
         </div>
+        <div class="section-label">Civilians</div>
+        <div class="gen-button-row">
+            <button onclick="placeCiviliansOnGauntlet()">Respawn Civs</button>
+        </div>
     `;
 
     tuningPanel.innerHTML = html;
@@ -2133,10 +2562,17 @@ function gameLoop(currentTime) {
 
     // Skip the first frame (deltaTime would be huge)
     if (deltaTime > 0 && deltaTime < 1) {
-        processInput();
-        updatePhysics(dt);
-        updateDrift(dt);
-        updateJuice(dt);
+        if (GameState.phase === 'PLAYING') {
+            processInput();
+            updateSanityDrain(GameState, dt);
+            updateHealth(GameState, dt);
+            updatePhysics(dt);
+            updateCivilians(GameState, dt);
+            checkEatCollision(GameState);
+            updateDrift(dt);
+            updateJuice(dt);
+        }
+        updateGamePhase(GameState);
         render();
         updateDebugPanel();
         updateSanityUI();
@@ -2155,6 +2591,7 @@ function init() {
     buildTuningPanel();
     updateSanityUI();
     findAndSetSpawn();
+    placeCiviliansOnGauntlet();
     requestAnimationFrame(gameLoop);
 }
 

@@ -166,8 +166,40 @@
   - Save/load strategy defined (minimal: level + HP via localStorage)
   - Naming conventions codified
 
+## Sprint 1: Game Systems Foundation
+- [x] Step 0: GameState shell + phase machine (PLAYING, GAME_OVER_SANITY, GAME_OVER_HP)
+  - GameState object referencing existing globals (Strangler Fig step 0)
+  - Phase machine with updateGamePhase() gating update systems
+  - R key restart from any game-over state
+  - resetGameState() resets zombie, sanity, entities, stats, drift, particles
+- [x] Task 1.1 + 1.7: Sanity drain + slider integration
+  - SANITY_DRAIN_RATE constant (0.15/s), updateSanityDrain() function
+  - "Auto Drain" checkbox in sanity bar (OFF by default, preserves toy mode)
+  - Slider syncs with GameState.sanity.value
+  - Tuning panel: Drain Rate slider
+- [x] Tasks 1.2 + 1.3: Health system + game over HP
+  - zombie.hp, zombie.maxHP, zombie.invincibleTimer fields
+  - damageZombie(state, amount) with iframe check
+  - updateHealth(state, dt) decrements invincibleTimer
+  - GAME_OVER_HP phase with orange "GAME OVER" overlay (distinct from red "MIND LOST")
+  - HP check before sanity check (edge case #3)
+  - Iframe flash: alternating alpha every 0.1s during invincibility
+  - Tuning panel: Max HP, Iframe Duration sliders
+- [x] Task 1.4: Civilian entity with flee AI
+  - createCivilian(x, y) factory function
+  - AI: FLEE (within 96px, 60 px/s away) > WANDER (30 px/s, random direction changes)
+  - Edge avoidance: ground-ahead + wall-ahead checks using isSolid()
+  - 5 civilians placed on Gauntlet platforms (2 ground, 1 Lucid, 2 Slipping)
+  - Rendered as cyan rectangles ("C" label), orange when fleeing
+  - Tuning panel: Flee Speed, Flee Range, Wander Speed sliders
+- [x] Task 1.5: Civilian eat + death scream
+  - aabbOverlap(a, b) shared AABB utility
+  - checkEatCollision(state): overlap → civilian dies, sanity +4 (cap 12), stats++
+  - broadcastScream(): visual shake + console log (threat alerting in Sprint 2)
+  - Particle burst + screen shake on eat
+  - Tuning panel: Per Eat, Scream Range, Scream Duration sliders
+
 ## Upcoming
-- Sprint 1: Game systems foundation (sanity drain, health, civilian AI)
 
 ## Pre-Production Documents Created
 - [x] docs/SCOPE_V1.md — MoSCoW scope document (10 Must/7 Should/5 Stretch/12 Won't)
