@@ -153,6 +153,18 @@
   - Systems-balance analysis: 18 total sanity (tighter economy), net sanity modeling per type
   - 8 edge cases, 8 tuning levers, 4 emergent behaviors
   - Implementation notes mapped to entity structure and AI branches
+- [x] Step 2.4: Architecture refactor plan (docs/ARCHITECTURE_REFACTOR.md)
+  - Architecture-doc template from gamedev-code-architecture skill fully applied
+  - Current vs target architecture diagrams (ASCII)
+  - GameState consolidation: centralized state object with serializable subset defined
+  - Entity system: flat data objects with factory functions (no premature abstraction)
+  - Game phase machine: 5 phases (TITLE, PLAYING, LEVEL_COMPLETE, GAME_OVER_HP, GAME_OVER_SANITY)
+  - Death scream as direct function call (not event bus — Rule of Three)
+  - 12-step Strangler Fig migration plan (each step atomic, game works after every step)
+  - "What NOT to refactor" section: 7 systems explicitly preserved
+  - 3 data flows documented (civilian eat, threat damage, game phase transitions)
+  - Save/load strategy defined (minimal: level + HP via localStorage)
+  - Naming conventions codified
 
 ## Upcoming
 - Sprint 1: Game systems foundation (sanity drain, health, civilian AI)

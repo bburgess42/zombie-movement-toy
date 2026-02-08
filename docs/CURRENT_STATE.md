@@ -186,5 +186,6 @@ docs/
   CORE_LOOP_SPEC.md — Core game loop mechanic spec
   CIVILIAN_ECOLOGY_SPEC.md — Civilian-threat ecology design
   CIVILIAN_VARIANTS_SPEC.md — Civilian variant types (stretch goal)
+  ARCHITECTURE_REFACTOR.md — Architecture refactor plan (GameState, entities, phases, migration)
 handoff/            — Inter-window communication (gitignored)
 ```
