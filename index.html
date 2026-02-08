@@ -1292,6 +1292,7 @@ function clampWorldBoundsY() {
     if (zombie.y + zombie.height > MAP_ROWS * TILE_SIZE) {
         zombie.y = MAP_ROWS * TILE_SIZE - zombie.height;
         zombie.vy = 0;
+        zombie.grounded = true;
     }
 }
 
@@ -1499,31 +1500,49 @@ function updateDrift(dt) {
 
         // Position nudge — instant displacement that bypasses speed clamp.
         // Both directions create observable movement: forward = overshoot,
-        // backward = undershoot. Collision resolved using drift direction
-        // (not zombie.vx, which may point the other way).
+        // backward = undershoot. Swept collision prevents tunneling through
+        // tiles on large nudges (up to 100px at max airborne drift).
+        const startX = zombie.x;
         zombie.x += direction * impulse * DRIFT_NUDGE_SCALE;
         clampWorldBoundsX();
 
-        // Inline collision resolution for the nudge direction
+        // Swept collision: check every column between old and new position
+        // so the zombie can't teleport through solid tiles
         const cTop = Math.floor(zombie.y / TILE_SIZE);
         const cBot = Math.floor((zombie.y + zombie.height - 1) / TILE_SIZE);
         if (direction > 0) {
-            const col = Math.floor((zombie.x + zombie.width - 1) / TILE_SIZE);
-            for (let row = cTop; row <= cBot; row++) {
-                if (isSolid(col, row)) {
-                    zombie.x = col * TILE_SIZE - zombie.width;
-                    break;
+            const origCol = Math.floor((startX + zombie.width - 1) / TILE_SIZE);
+            const newCol = Math.floor((zombie.x + zombie.width - 1) / TILE_SIZE);
+            for (let c = origCol + 1; c <= newCol; c++) {
+                let hit = false;
+                for (let row = cTop; row <= cBot; row++) {
+                    if (isSolid(c, row)) {
+                        zombie.x = c * TILE_SIZE - zombie.width;
+                        hit = true;
+                        break;
+                    }
                 }
+                if (hit) break;
             }
         } else {
-            const col = Math.floor(zombie.x / TILE_SIZE);
-            for (let row = cTop; row <= cBot; row++) {
-                if (isSolid(col, row)) {
-                    zombie.x = (col + 1) * TILE_SIZE;
-                    break;
+            const origCol = Math.floor(startX / TILE_SIZE);
+            const newCol = Math.floor(zombie.x / TILE_SIZE);
+            for (let c = origCol - 1; c >= newCol; c--) {
+                let hit = false;
+                for (let row = cTop; row <= cBot; row++) {
+                    if (isSolid(c, row)) {
+                        zombie.x = (c + 1) * TILE_SIZE;
+                        hit = true;
+                        break;
+                    }
                 }
+                if (hit) break;
             }
         }
+
+        // Y resolution after X nudge — prevents falling off platform
+        // edges when drift pushes zombie horizontally off ground
+        resolveVertical();
 
         // Velocity residue — small momentum change for physical feel.
         // Gets corrected by acceleration/friction over the next few frames.
