@@ -36,7 +36,7 @@
 - [x] Evaluate input drift (annoying vs. interestingly scary?) — retuned: bigger/rarer impulses, airborne amplification, visual flash
 - [x] Evaluate tier progression — dead zones fixed: all params now smooth interpolation (no tier stepping)
 - [x] Test edge cases — spam jump bug found and fixed (jumpCut flag prevents repeated velocity cut)
-- [ ] Record tuned constant values
+- [x] Record tuned constant values — see below
 
 ## Potential Refinements (only if movement feel needs it)
 - [x] Adjust base constants after playtesting — BASE_ACCELERATION bumped, FERAL_INPUT_DELAY tightened
@@ -46,6 +46,33 @@
 - [x] Test platform edge collision behavior — no issues found
 - [x] Convert tier-stepped params to smooth interpolation — speed, accel, air control, gravity all interpolate via getSanityT()
 - [x] Fix variable jump height spam bug — jumpCut flag ensures one cut per jump
+
+## Tuned Constants (post-playtest)
+
+| Constant | Value | Notes |
+|----------|-------|-------|
+| **Base Movement** | | |
+| BASE_MAX_SPEED | 300 px/s | Unchanged |
+| BASE_ACCELERATION | 2400 px/s² | Was 1800 — snappier starts/reversals |
+| BASE_DECELERATION | 3200 px/s² | Unchanged |
+| BASE_AIR_CONTROL | 0.8 | Unchanged |
+| **Jump** | | |
+| JUMP_VELOCITY | -600 px/s | Unchanged |
+| GRAVITY | 1400 px/s² | Unchanged (but scaled by sanity at runtime) |
+| COYOTE_TIME | 0.1s | Unchanged |
+| JUMP_BUFFER_TIME | 0.1s | Unchanged |
+| **Sanity Sliding Scales** | | All interpolate smoothly sanity 12→0 |
+| FERAL_SPEED_MULT | 1.5 | Max speed at sanity 0 = 450 px/s |
+| FERAL_ACCEL_MULT | 1.6 | Accel at sanity 0 = 3840 px/s² |
+| FERAL_AIR_CONTROL_MULT | 0.5 | Air control at sanity 0 = 0.4 |
+| FERAL_JUMP_MULT | 1.6 | Jump vel at sanity 0 = -960 px/s |
+| FERAL_DECEL_MULT | 0.5 | Decel at sanity 0 = 1600 px/s² |
+| FERAL_GRAVITY_MULT | 1.15 | Gravity at sanity 0 = 1610 px/s² |
+| **Drift** | | |
+| SLIPPING_DRIFT_IMPULSE | 100 px/s | Every 1.0-2.5s |
+| FERAL_DRIFT_IMPULSE | 500 px/s | Every 0.8-1.8s |
+| DRIFT_AIRBORNE_MULT | 2.0 | Impulse doubled while airborne |
+| FERAL_INPUT_DELAY | 0.03s | Was 0.05 — direction reversal delay |
 
 ## Upcoming
 - (nothing currently planned)
