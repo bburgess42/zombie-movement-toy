@@ -175,6 +175,42 @@ canvas {
     letter-spacing: 8px;
 }
 
+/* --- Level complete overlay --- */
+#level-complete-overlay {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    display: none;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    background: rgba(0, 0, 0, 0.6);
+    pointer-events: none;
+    z-index: 20;
+    gap: 12px;
+}
+#level-complete-overlay.active { display: flex; }
+#level-complete-overlay .title {
+    font-size: 56px;
+    font-weight: bold;
+    color: #53d769;
+    text-shadow: 0 0 30px #53d769, 0 0 60px #2a8c3a;
+    font-family: 'Consolas', monospace;
+    letter-spacing: 6px;
+}
+#level-complete-overlay .stats {
+    font-size: 16px;
+    color: #cccccc;
+    font-family: 'Consolas', monospace;
+    text-align: center;
+    line-height: 1.8;
+}
+#level-complete-overlay .restart {
+    font-size: 14px;
+    color: #888888;
+    font-family: 'Consolas', monospace;
+    margin-top: 8px;
+}
+
 /* --- Auto drain checkbox --- */
 #drain-toggle {
     display: flex;
@@ -240,10 +276,15 @@ canvas {
     <div id="tuning-panel"></div>
     <div id="gone-overlay"><span>MIND LOST</span></div>
     <div id="game-over-hp-overlay"><span>GAME OVER</span></div>
+    <div id="level-complete-overlay">
+        <div class="title">LEVEL COMPLETE</div>
+        <div class="stats" id="level-complete-stats"></div>
+        <div class="restart">Press R to Restart</div>
+    </div>
 </div>
 
 <div id="controls-hint">
-    WASD or Arrow Keys to move &bull; Space to jump &bull; R to restart &bull; Slider to change sanity tier
+    WASD or Arrow Keys to move &bull; Space to jump &bull; R to restart &bull; Reach EXIT to win &bull; Slider to change sanity tier
 </div>
 
 <script>
@@ -342,7 +383,17 @@ let CIVILIAN_WANDER_SPEED = 30;        // px/s — idle movement speed
 // --- Eat + death scream ---
 let SANITY_PER_EAT = 4;               // sanity restored per civilian eaten
 let SCREAM_ALERT_RANGE = 128;          // px — death scream alert radius
-let SCREAM_ALERT_DURATION = 3.0;       // seconds — threat investigation time (Sprint 2)
+let SCREAM_ALERT_DURATION = 3.0;       // seconds — threat investigation time
+
+// --- Threat system ---
+let THREAT_SPEED = 120;                // px/s — patrol movement speed
+let THREAT_CHASE_SPEED = 200;          // px/s — chase movement speed
+let THREAT_DAMAGE = 1;                 // HP per hit
+let THREAT_DETECTION_RANGE = 160;      // px — aggro range
+let THREAT_PATROL_RANGE = 128;         // px — default patrol (no civilian)
+let THREAT_GUARD_RANGE = 64;           // px — patrol radius around guarded civilian
+let THREAT_LEASH_DISTANCE = 160;       // px — max chase distance from guarded civilian
+let POUNCE_SANITY_THRESHOLD = 4;       // sanity below which pounce is active (Feral boundary)
 
 // ============================================================
 // TILE MAP
@@ -970,8 +1021,12 @@ function applyLevel(grid, width, height) {
     MAP_DATA = grid.map(row => row.map(v => v ? '=' : '.').join(''));
     resizeCanvas();
     findAndSetSpawn();
-    // Clear civilians (Gauntlet placement only works on Gauntlet map)
-    if (typeof GameState !== 'undefined') GameState.entities.civilians = [];
+    // Clear entities and place exit (Gauntlet placement only works on Gauntlet map)
+    if (typeof GameState !== 'undefined') {
+        GameState.entities.civilians = [];
+        GameState.entities.threats = [];
+        if (typeof findAndSetExit === 'function') findAndSetExit();
+    }
 }
 
 /** Restore the hardcoded Sanity Gauntlet map */
@@ -982,8 +1037,10 @@ function loadPresetGauntlet() {
     tileMap = MAP_DATA.map(row => Array.from(row).map(ch => ch === '='));
     resizeCanvas();
     findAndSetSpawn();
-    // Repopulate civilians for the Gauntlet map
+    // Repopulate entities for the Gauntlet map
     if (typeof placeCiviliansOnGauntlet === 'function') placeCiviliansOnGauntlet();
+    if (typeof placeThreatsOnMap === 'function') { placeThreatsOnMap(); assignGuards(GameState); }
+    if (typeof findAndSetExit === 'function') findAndSetExit();
     // Update generator sliders to match
     const ws = document.getElementById('gen-width');
     const hs = document.getElementById('gen-height');
@@ -1090,16 +1147,19 @@ let GameState = {
     },
     entities: {
         civilians: [],
+        threats: [],
     },
     level: {
         tileMap: tileMap,
         cols: MAP_COLS,
         rows: MAP_ROWS,
+        exit: { x: 0, y: 0, width: 32, height: 64 },
     },
     stats: {
         timeElapsed: 0,
         civiliansEaten: 0,
         damagesTaken: 0,
+        threatsPounced: 0,
     },
 };
 
@@ -1112,6 +1172,8 @@ let GameState = {
 
 const gameOverHpOverlay = document.getElementById('game-over-hp-overlay');
 const goneOverlay = document.getElementById('gone-overlay');
+const levelCompleteOverlay = document.getElementById('level-complete-overlay');
+const levelCompleteStats = document.getElementById('level-complete-stats');
 
 function updateGamePhase(state) {
     switch (state.phase) {
@@ -1125,6 +1187,22 @@ function updateGamePhase(state) {
                 state.phase = 'GAME_OVER_SANITY';
                 break;
             }
+            if (checkExitZone(state)) {
+                state.phase = 'LEVEL_COMPLETE';
+                // Populate stats overlay
+                const mins = Math.floor(state.stats.timeElapsed / 60);
+                const secs = Math.floor(state.stats.timeElapsed % 60);
+                const timeStr = `${mins}:${secs.toString().padStart(2, '0')}`;
+                const totalCivs = state.entities.civilians.length;
+                levelCompleteStats.innerHTML = [
+                    `Time: ${timeStr}`,
+                    `Civilians Eaten: ${state.stats.civiliansEaten} / ${totalCivs}`,
+                    `HP Remaining: ${state.zombie.hp} / ${state.zombie.maxHP}`,
+                    `Threats Pounced: ${state.stats.threatsPounced}`,
+                ].join('<br>');
+                levelCompleteOverlay.classList.add('active');
+                break;
+            }
             break;
 
         case 'GAME_OVER_SANITY':
@@ -1136,6 +1214,12 @@ function updateGamePhase(state) {
 
         case 'GAME_OVER_HP':
             gameOverHpOverlay.classList.add('active');
+            if (keysDown.has('r') || keysDown.has('R')) {
+                resetGameState();
+            }
+            break;
+
+        case 'LEVEL_COMPLETE':
             if (keysDown.has('r') || keysDown.has('R')) {
                 resetGameState();
             }
@@ -1164,12 +1248,16 @@ function resetGameState() {
 
     // Reset entities
     GameState.entities.civilians = [];
+    GameState.entities.threats = [];
     placeCiviliansOnGauntlet();
+    placeThreatsOnMap();
+    assignGuards(GameState);
 
     // Reset stats
     GameState.stats.timeElapsed = 0;
     GameState.stats.civiliansEaten = 0;
     GameState.stats.damagesTaken = 0;
+    GameState.stats.threatsPounced = 0;
 
     // Reset drift
     drift.timer = 0;
@@ -1189,9 +1277,13 @@ function resetGameState() {
     camera.shakeTimer = 0;
     camera.shakeBiasX = 0;
 
+    // Place exit zone
+    findAndSetExit();
+
     // Clear overlays
     goneOverlay.classList.remove('active');
     gameOverHpOverlay.classList.remove('active');
+    levelCompleteOverlay.classList.remove('active');
 
     // Resume play
     GameState.phase = 'PLAYING';
@@ -1388,6 +1480,9 @@ function checkEatCollision(state) {
             // Death scream
             broadcastScream(state, civ.x + civ.width / 2, civ.y + civ.height / 2);
 
+            // Reassign guards (eaten civilian's guard needs a new assignment)
+            assignGuards(state);
+
             // Visual feedback: particles + shake
             emitDust(civ.x + civ.width / 2, civ.y + civ.height / 2, 6, 0, 60);
             triggerShake(2, 0.1);
@@ -1399,10 +1494,379 @@ function checkEatCollision(state) {
 }
 
 function broadcastScream(state, x, y) {
-    // Sprint 1: visual shake + console log only
-    // Threat alerting will be added in Sprint 2
+    // Alert all threats within scream range
+    for (const threat of state.entities.threats) {
+        if (!threat.alive) continue;
+        const dx = threat.x + threat.width / 2 - x;
+        const dy = threat.y + threat.height / 2 - y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist <= SCREAM_ALERT_RANGE) {
+            threat.state = 'RESPONDING_TO_SCREAM';
+            threat.alertTarget = { x: x, y: y };
+            threat.alertTimer = SCREAM_ALERT_DURATION;
+        }
+    }
     triggerShake(1.5, 0.08);
-    console.log(`Death scream at (${x.toFixed(0)}, ${y.toFixed(0)}) — ${state.stats.civiliansEaten} civilians eaten`);
+}
+
+// ============================================================
+// THREAT SYSTEM
+// Threat entities guard civilians and chase the zombie. AI states:
+// GUARD_PATROL — patrol near assigned civilian (or patrolCenter)
+// CHASE — pursue zombie within leash distance
+// RESPONDING_TO_SCREAM — move to scream location on alert
+// ============================================================
+
+function createThreat(x, y) {
+    return {
+        x: x, y: y,
+        width: 32, height: 32,
+        vx: 0,
+        alive: true,
+        state: 'GUARD_PATROL',
+        guardedCivilian: null,
+        patrolCenter: x,
+        alertTimer: 0,
+        alertTarget: { x: 0, y: 0 },
+        facingRight: true,
+    };
+}
+
+/** Check if two entities share continuous ground on the same row */
+function areSamePlatform(entityA, entityB) {
+    const rowA = Math.floor((entityA.y + entityA.height) / TILE_SIZE);
+    const rowB = Math.floor((entityB.y + entityB.height) / TILE_SIZE);
+    if (rowA !== rowB) return false;
+
+    const colA = Math.floor((entityA.x + entityA.width / 2) / TILE_SIZE);
+    const colB = Math.floor((entityB.x + entityB.width / 2) / TILE_SIZE);
+    const minCol = Math.min(colA, colB);
+    const maxCol = Math.max(colA, colB);
+
+    for (let c = minCol; c <= maxCol; c++) {
+        if (!isSolid(c, rowA)) return false;
+    }
+    return true;
+}
+
+/** Assign each threat to guard the nearest alive same-platform civilian.
+ *  Prefer civilians not already guarded by 2+ threats. */
+function assignGuards(state) {
+    // Count guards per civilian
+    const guardCounts = new Map();
+    for (const threat of state.entities.threats) {
+        if (!threat.alive) continue;
+        threat.guardedCivilian = null;
+    }
+
+    for (const threat of state.entities.threats) {
+        if (!threat.alive) continue;
+
+        let bestCiv = null;
+        let bestDist = Infinity;
+
+        for (const civ of state.entities.civilians) {
+            if (!civ.alive) continue;
+            if (!areSamePlatform(threat, civ)) continue;
+
+            const count = guardCounts.get(civ) || 0;
+            const dx = threat.x - civ.x;
+            const dy = threat.y - civ.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+
+            // Prefer civilians with fewer guards, then nearest
+            if (bestCiv === null ||
+                count < (guardCounts.get(bestCiv) || 0) ||
+                (count === (guardCounts.get(bestCiv) || 0) && dist < bestDist)) {
+                bestCiv = civ;
+                bestDist = dist;
+            }
+        }
+
+        threat.guardedCivilian = bestCiv;
+        if (bestCiv) {
+            threat.patrolCenter = bestCiv.x + bestCiv.width / 2;
+            guardCounts.set(bestCiv, (guardCounts.get(bestCiv) || 0) + 1);
+        }
+    }
+}
+
+function updateThreats(state, dt) {
+    for (const threat of state.entities.threats) {
+        if (!threat.alive) continue;
+
+        const zx = state.zombie.x + state.zombie.width / 2;
+        const zy = state.zombie.y + state.zombie.height / 2;
+        const tx = threat.x + threat.width / 2;
+        const ty = threat.y + threat.height / 2;
+        const distToZombie = Math.sqrt((zx - tx) * (zx - tx) + (zy - ty) * (zy - ty));
+
+        // Leash anchor: guarded civilian's center, or patrolCenter
+        let anchorX = threat.patrolCenter;
+        if (threat.guardedCivilian && threat.guardedCivilian.alive) {
+            anchorX = threat.guardedCivilian.x + threat.guardedCivilian.width / 2;
+            threat.patrolCenter = anchorX;
+        }
+        const distFromAnchor = Math.abs(tx - anchorX);
+
+        // AI priority: RESPONDING_TO_SCREAM > CHASE > GUARD_PATROL
+        if (threat.state === 'RESPONDING_TO_SCREAM') {
+            // Move toward alert target
+            const dx = threat.alertTarget.x - tx;
+            if (Math.abs(dx) > 4) {
+                threat.vx = Math.sign(dx) * THREAT_CHASE_SPEED;
+                threat.facingRight = dx > 0;
+            } else {
+                threat.vx = 0;
+            }
+            threat.alertTimer -= dt;
+            if (threat.alertTimer <= 0 || Math.abs(dx) <= 4) {
+                threat.state = 'GUARD_PATROL';
+                threat.alertTimer = 0;
+            }
+        } else if (distToZombie < THREAT_DETECTION_RANGE && distFromAnchor < THREAT_LEASH_DISTANCE) {
+            // CHASE
+            threat.state = 'CHASE';
+            const dx = zx - tx;
+            threat.vx = Math.sign(dx) * THREAT_CHASE_SPEED;
+            threat.facingRight = dx > 0;
+
+            // Break chase if too far from anchor
+            if (distFromAnchor >= THREAT_LEASH_DISTANCE) {
+                threat.state = 'GUARD_PATROL';
+            }
+        } else {
+            // GUARD_PATROL
+            threat.state = 'GUARD_PATROL';
+            const patrolRange = threat.guardedCivilian && threat.guardedCivilian.alive
+                ? THREAT_GUARD_RANGE : THREAT_PATROL_RANGE;
+
+            // Patrol back and forth around anchor
+            const distToAnchor = tx - anchorX;
+            if (Math.abs(distToAnchor) > patrolRange) {
+                // Beyond patrol range — reverse toward anchor
+                threat.vx = distToAnchor > 0 ? -THREAT_SPEED : THREAT_SPEED;
+                threat.facingRight = threat.vx > 0;
+            } else if (threat.vx === 0) {
+                // Start patrolling
+                threat.vx = (threat.facingRight ? 1 : -1) * THREAT_SPEED;
+            } else {
+                // Continue patrolling at patrol speed
+                threat.vx = Math.sign(threat.vx) * THREAT_SPEED;
+            }
+        }
+
+        // Edge avoidance: check ground ahead and wall ahead
+        const moveDir = threat.vx > 0 ? 1 : -1;
+        const checkX = moveDir > 0 ? threat.x + threat.width : threat.x - 1;
+        const checkCol = Math.floor(checkX / TILE_SIZE);
+        const footRow = Math.floor((threat.y + threat.height) / TILE_SIZE);
+        const headRow = Math.floor(threat.y / TILE_SIZE);
+
+        const hasGround = checkCol >= 0 && checkCol < MAP_COLS && footRow < MAP_ROWS && isSolid(checkCol, footRow);
+        const hasWall = checkCol >= 0 && checkCol < MAP_COLS && isSolid(checkCol, headRow);
+
+        if (!hasGround || hasWall) {
+            threat.vx = -threat.vx;
+            threat.facingRight = !threat.facingRight;
+        }
+
+        // Apply movement
+        threat.x += threat.vx * dt;
+
+        // World boundary clamp
+        if (threat.x < 0) { threat.x = 0; threat.vx = Math.abs(threat.vx); threat.facingRight = true; }
+        if (threat.x + threat.width > MAP_COLS * TILE_SIZE) {
+            threat.x = MAP_COLS * TILE_SIZE - threat.width;
+            threat.vx = -Math.abs(threat.vx);
+            threat.facingRight = false;
+        }
+    }
+}
+
+function renderThreats(state) {
+    for (const threat of state.entities.threats) {
+        if (!threat.alive) continue;
+
+        // Color by state: red (patrol), magenta (chase), yellow (scream response)
+        if (threat.state === 'RESPONDING_TO_SCREAM') {
+            ctx.fillStyle = '#ffdd00';
+        } else if (threat.state === 'CHASE') {
+            ctx.fillStyle = '#ff00ff';
+        } else {
+            ctx.fillStyle = '#ff3333';
+        }
+        ctx.fillRect(threat.x, threat.y, threat.width, threat.height);
+
+        // Cyan outline when guarding a civilian
+        if (threat.guardedCivilian && threat.guardedCivilian.alive) {
+            ctx.strokeStyle = '#00ddff';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(threat.x, threat.y, threat.width, threat.height);
+        }
+
+        // "!" label
+        ctx.fillStyle = '#000';
+        ctx.font = 'bold 16px Consolas, monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('!', threat.x + threat.width / 2, threat.y + threat.height / 2);
+    }
+}
+
+/** Place threats on valid standing positions near civilians.
+ *  Each threat picks the nearest same-row position to a civilian,
+ *  offset by 2-4 tiles so it's nearby but not overlapping. */
+function placeThreatsOnMap() {
+    GameState.entities.threats = [];
+    const positions = findStandingPositions();
+    if (positions.length === 0) return;
+
+    const civs = GameState.entities.civilians.filter(c => c.alive);
+    const count = Math.min(3, positions.length);
+    const usedCivIndices = new Set();
+
+    for (let i = 0; i < count; i++) {
+        // Pick a civilian to place near (spread across civilians, no repeats until all used)
+        let targetCiv = null;
+        if (civs.length > 0) {
+            const civIdx = Math.floor((i + 0.5) * civs.length / count);
+            // Prefer an unused civilian
+            let chosen = civIdx;
+            for (let try_ = 0; try_ < civs.length; try_++) {
+                const candidate = (civIdx + try_) % civs.length;
+                if (!usedCivIndices.has(candidate)) { chosen = candidate; break; }
+            }
+            usedCivIndices.add(chosen);
+            targetCiv = civs[chosen];
+        }
+
+        let bestPos = null;
+        let bestDist = Infinity;
+
+        if (targetCiv) {
+            const civCol = Math.floor((targetCiv.x + targetCiv.width / 2) / TILE_SIZE);
+            const civRow = Math.floor((targetCiv.y + targetCiv.height) / TILE_SIZE);
+
+            // Find nearest same-row position, 2-4 tiles away
+            for (const pos of positions) {
+                if (pos.row !== civRow - 1 && pos.row !== civRow) continue;
+                const colDist = Math.abs(pos.col - civCol);
+                if (colDist < 2 || colDist > 6) continue;
+                if (colDist < bestDist) {
+                    bestDist = colDist;
+                    bestPos = pos;
+                }
+            }
+            // Fallback: any same-row position near the civilian
+            if (!bestPos) {
+                for (const pos of positions) {
+                    if (pos.row !== civRow - 1 && pos.row !== civRow) continue;
+                    const colDist = Math.abs(pos.col - civCol);
+                    if (colDist < bestDist) {
+                        bestDist = colDist;
+                        bestPos = pos;
+                    }
+                }
+            }
+        }
+
+        // Final fallback: evenly spaced position
+        if (!bestPos) {
+            const idx = Math.floor((i + 0.5) * positions.length / count);
+            bestPos = positions[idx];
+        }
+
+        const px = bestPos.col * TILE_SIZE + (TILE_SIZE - 32) / 2;
+        const py = bestPos.row * TILE_SIZE + TILE_SIZE - 32;
+        GameState.entities.threats.push(createThreat(px, py));
+    }
+}
+
+// ============================================================
+// THREAT COLLISION + POUNCE
+// Zombie-threat overlap: at Feral (sanity < threshold) the
+// zombie pounces and kills the threat. Otherwise, takes damage.
+// ============================================================
+
+function checkThreatCollision(state) {
+    for (const threat of state.entities.threats) {
+        if (!threat.alive) continue;
+        if (!aabbOverlap(state.zombie, threat)) continue;
+
+        if (sanity < POUNCE_SANITY_THRESHOLD) {
+            // POUNCE — kill the threat
+            threat.alive = false;
+            state.stats.threatsPounced++;
+
+            // Visual feedback: large particle burst + strong shake
+            emitDust(threat.x + threat.width / 2, threat.y + threat.height / 2, 8, 0, 80);
+            triggerShake(4, 0.15);
+
+            // Reassign remaining guards
+            assignGuards(state);
+        } else {
+            // DAMAGE — threat hurts zombie (respects iframes)
+            damageZombie(state, THREAT_DAMAGE);
+        }
+    }
+}
+
+// ============================================================
+// LEVEL ZONES
+// Exit zone detection and rendering. The exit is a gold rectangle
+// on the right side of the map. Walking into it completes the level.
+// ============================================================
+
+/** Find a valid exit position on the right side of the map */
+function findAndSetExit() {
+    // Scan rightmost columns for a valid 2-tile-high space above solid ground
+    for (let col = MAP_COLS - 2; col >= MAP_COLS - 5; col--) {
+        for (let row = MAP_ROWS - 1; row >= 2; row--) {
+            if (isSolid(col, row) && !isSolid(col, row - 1) && !isSolid(col, row - 2)) {
+                GameState.level.exit.x = col * TILE_SIZE;
+                GameState.level.exit.y = (row - 2) * TILE_SIZE;
+                GameState.level.exit.width = 32;
+                GameState.level.exit.height = 64;
+                return;
+            }
+        }
+    }
+    // Fallback: rightmost standing position
+    const positions = findStandingPositions();
+    if (positions.length > 0) {
+        const pos = positions[positions.length - 1];
+        GameState.level.exit.x = pos.col * TILE_SIZE;
+        GameState.level.exit.y = (pos.row - 1) * TILE_SIZE;
+        GameState.level.exit.width = 32;
+        GameState.level.exit.height = 64;
+    }
+}
+
+/** Check if zombie overlaps the exit zone */
+function checkExitZone(state) {
+    return aabbOverlap(state.zombie, state.level.exit);
+}
+
+/** Render the exit zone as a gold rectangle with pulsing border */
+function renderExitZone() {
+    const exit = GameState.level.exit;
+    // Filled gold rectangle
+    ctx.fillStyle = 'rgba(255, 215, 0, 0.3)';
+    ctx.fillRect(exit.x, exit.y, exit.width, exit.height);
+
+    // Pulsing border
+    const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 300);
+    ctx.strokeStyle = `rgba(255, 215, 0, ${0.5 + pulse * 0.5})`;
+    ctx.lineWidth = 2 + pulse;
+    ctx.strokeRect(exit.x, exit.y, exit.width, exit.height);
+
+    // "EXIT" label
+    ctx.fillStyle = '#ffd700';
+    ctx.font = 'bold 11px Consolas, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('EXIT', exit.x + exit.width / 2, exit.y + exit.height / 2);
 }
 
 // ============================================================
@@ -1626,6 +2090,12 @@ function updatePhysics(dt) {
     zombie.y += zombie.vy * dt;
     clampWorldBoundsY();
     resolveVertical();
+
+    // World bottom acts as ground — resolveVertical can't detect the
+    // boundary as a solid tile, so re-check after it runs
+    if (!zombie.grounded && zombie.y + zombie.height >= MAP_ROWS * TILE_SIZE) {
+        zombie.grounded = true;
+    }
 
     // --- Reversal juice trigger ---
     // Fire when the zombie was moving fast in one direction and
@@ -2187,6 +2657,9 @@ function render() {
         }
     }
 
+    // --- Draw exit zone (behind entities) ---
+    renderExitZone();
+
     // --- Draw particles (behind zombie) ---
     renderParticles();
 
@@ -2195,6 +2668,9 @@ function render() {
 
     // --- Draw civilians (behind zombie in z-order) ---
     renderCivilians(GameState);
+
+    // --- Draw threats (behind zombie in z-order) ---
+    renderThreats(GameState);
 
     // --- Draw zombie with squash/stretch ---
     const tier = getSanityTier(sanity);
@@ -2306,11 +2782,13 @@ const debugPanel = document.getElementById('debug-panel');
 function updateDebugPanel() {
     const tier = getSanityTier(sanity);
     const aliveCivs = GameState.entities.civilians.filter(c => c.alive).length;
+    const aliveThreats = GameState.entities.threats.filter(t => t.alive).length;
     const lines = [
         `Phase: ${GameState.phase}`,
         `Sanity: ${sanity.toFixed(1)} (${tier})${GameState.sanity.drainEnabled ? ' [DRAIN]' : ''}`,
         `HP: ${zombie.hp} / ${zombie.maxHP}${zombie.invincibleTimer > 0 ? ' [IFRAME]' : ''}`,
         `Civilians: ${aliveCivs} alive, ${GameState.stats.civiliansEaten} eaten`,
+        `Threats: ${aliveThreats} alive, ${GameState.stats.threatsPounced} pounced`,
         `Velocity: (${zombie.vx.toFixed(0)}, ${zombie.vy.toFixed(0)})`,
         `Speed: ${Math.abs(zombie.vx).toFixed(0)} / ${getMaxSpeed().toFixed(0)}`,
         `Grounded: ${zombie.grounded}`,
@@ -2437,6 +2915,16 @@ const tuningParams = [
     { label: 'Flee Speed', key: 'CIVILIAN_FLEE_SPEED', min: 20, max: 150, step: 5 },
     { label: 'Flee Range', key: 'CIVILIAN_FLEE_RANGE', min: 32, max: 192, step: 8 },
     { label: 'Wander Spd', key: 'CIVILIAN_WANDER_SPEED', min: 10, max: 80, step: 5 },
+
+    { section: 'Threat AI' },
+    { label: 'Patrol Spd', key: 'THREAT_SPEED', min: 40, max: 240, step: 10 },
+    { label: 'Chase Spd', key: 'THREAT_CHASE_SPEED', min: 80, max: 400, step: 10 },
+    { label: 'Damage', key: 'THREAT_DAMAGE', min: 1, max: 5, step: 1 },
+    { label: 'Detect Rng', key: 'THREAT_DETECTION_RANGE', min: 64, max: 320, step: 16 },
+    { label: 'Guard Rng', key: 'THREAT_GUARD_RANGE', min: 16, max: 192, step: 8 },
+    { label: 'Patrol Rng', key: 'THREAT_PATROL_RANGE', min: 32, max: 256, step: 16 },
+    { label: 'Leash Dist', key: 'THREAT_LEASH_DISTANCE', min: 64, max: 320, step: 16 },
+    { label: 'Pounce San', key: 'POUNCE_SANITY_THRESHOLD', min: 1, max: 8, step: 1 },
 ];
 
 // We store references to the global variables via eval for live read/write.
@@ -2498,9 +2986,10 @@ function buildTuningPanel() {
             <button onclick="doRandomGenerate()">Random</button>
             <button onclick="loadPresetGauntlet()">Gauntlet</button>
         </div>
-        <div class="section-label">Civilians</div>
+        <div class="section-label">Entities</div>
         <div class="gen-button-row">
             <button onclick="placeCiviliansOnGauntlet()">Respawn Civs</button>
+            <button onclick="placeThreatsOnMap(); assignGuards(GameState);">Respawn Threats</button>
         </div>
     `;
 
@@ -2566,9 +3055,12 @@ function gameLoop(currentTime) {
             processInput();
             updateSanityDrain(GameState, dt);
             updateHealth(GameState, dt);
+            GameState.stats.timeElapsed += dt;
             updatePhysics(dt);
             updateCivilians(GameState, dt);
+            updateThreats(GameState, dt);
             checkEatCollision(GameState);
+            checkThreatCollision(GameState);
             updateDrift(dt);
             updateJuice(dt);
         }
@@ -2592,6 +3084,9 @@ function init() {
     updateSanityUI();
     findAndSetSpawn();
     placeCiviliansOnGauntlet();
+    placeThreatsOnMap();
+    assignGuards(GameState);
+    findAndSetExit();
     requestAnimationFrame(gameLoop);
 }
 

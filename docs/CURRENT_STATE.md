@@ -1,6 +1,6 @@
 # Zombie Movement Toy — Current State
 
-**Version:** Sprint 1 complete (game systems foundation)
+**Version:** Sprint 2 complete (threat AI + game flow)
 **Last updated:** Feb 2026
 
 ## Overview
@@ -91,10 +91,10 @@ Four feedback systems that close Swink's simulation → feedback loop. Without t
 ### GameState + Phase Machine (Sprint 1)
 Centralized `GameState` object (Strangler Fig migration). References existing globals — bare `zombie` and `sanity` remain as sources of truth during Sprint 1. New systems read/write through GameState.
 
-- **Phases**: PLAYING, GAME_OVER_SANITY ("MIND LOST"), GAME_OVER_HP ("GAME OVER")
+- **Phases**: PLAYING, GAME_OVER_SANITY ("MIND LOST"), GAME_OVER_HP ("GAME OVER"), LEVEL_COMPLETE ("LEVEL COMPLETE")
 - **Game loop gate**: Update systems only run when `GameState.phase === 'PLAYING'`
 - **Restart**: R key in any game-over state calls `resetGameState()`
-- **Stats tracking**: `timeElapsed`, `civiliansEaten`, `damagesTaken`
+- **Stats tracking**: `timeElapsed`, `civiliansEaten`, `damagesTaken`, `threatsPounced`
 
 ### Health System (Sprint 1)
 - `zombie.hp` / `zombie.maxHP` (default 5)
@@ -120,18 +120,46 @@ Centralized `GameState` object (Strangler Fig migration). References existing gl
 ### Eat Collision + Death Scream (Sprint 1)
 - `aabbOverlap(a, b)` — shared AABB utility
 - `checkEatCollision(state)` — overlap → civilian dies, sanity +4 (cap 12)
-- `broadcastScream(state, x, y)` — visual shake + console log (Sprint 2: threat alerting)
+- `broadcastScream(state, x, y)` — alerts all threats within `SCREAM_ALERT_RANGE`, shake
+- Guard reassignment on civilian death (`assignGuards` called after eat)
 - Particle burst + screen shake on eat
 - Eating at full sanity wastes restore but still triggers scream
+
+### Threat System (Sprint 2)
+- `createThreat(x, y)` — factory returning flat data object with AI state
+- 3 threats placed on valid standing positions, spread across map
+- `areSamePlatform(a, b)` — checks continuous ground between entities
+- `assignGuards(state)` — each threat guards nearest same-platform civilian (prefer < 2 guards)
+- **AI States**:
+  - **GUARD_PATROL**: patrol within `THREAT_GUARD_RANGE` of guarded civilian (or `THREAT_PATROL_RANGE` of patrolCenter if no civilian). Follows civilian as it moves.
+  - **CHASE**: zombie within `THREAT_DETECTION_RANGE` AND threat within `THREAT_LEASH_DISTANCE` of anchor. Moves at `THREAT_CHASE_SPEED`. Breaks chase when zombie exceeds leash.
+  - **RESPONDING_TO_SCREAM**: highest priority. Move to alertTarget at chase speed. Timer-based, returns to GUARD_PATROL on expiry or arrival.
+- Edge avoidance: ground-ahead + wall-ahead checks (same pattern as civilians)
+- Rendered as colored rectangles ("!" label): red (patrol), magenta (chase), yellow (scream response). Cyan outline when guarding.
+
+### Threat Collision + Pounce (Sprint 2)
+- `checkThreatCollision(state)` — AABB overlap zombie ↔ threats
+- **Pounce mechanic**: at Feral (sanity < `POUNCE_SANITY_THRESHOLD`=4), touching a threat kills it — no HP loss, particle burst, strong shake
+- **Damage**: at Lucid/Slipping, touching a threat calls `damageZombie` (respects iframes)
+- `threatsPounced` stat tracked
+
+### Level Exit + Level Complete (Sprint 2)
+- `findAndSetExit()` — scans rightmost columns for valid 2-tile-high open space above ground
+- `checkExitZone(state)` — AABB overlap zombie ↔ exit zone
+- `renderExitZone()` — gold/yellow rectangle with pulsing border + "EXIT" label, drawn after tiles but before entities
+- **LEVEL_COMPLETE phase**: green overlay with stats (time, civilians eaten, HP, threats pounced). R to restart.
+- Time tracking: `GameState.stats.timeElapsed += dt` in game loop
+- Exit placed on all map change events (init, reset, generate, Gauntlet)
 
 ### UI
 - **Sanity slider**: top bar, range 0-12, real-time, shows value + tier name
 - **Auto Drain checkbox**: next to slider, toggles continuous sanity drain
-- **Debug panel**: top-right overlay, monospace, shows phase/HP/civilians + velocity/grounded/coyote/buffer/air control/drift
-- **Tuning panel**: collapsible left panel with sliders for all movement constants + juice params + level generator + sanity system + health + civilian AI
+- **Debug panel**: top-right overlay, monospace, shows phase/HP/civilians/threats + velocity/grounded/coyote/buffer/air control/drift
+- **Tuning panel**: collapsible left panel with sliders for all movement constants + juice params + level generator + sanity system + health + civilian AI + threat AI
 - **Gone overlay**: "MIND LOST" text on GAME_OVER_SANITY phase
 - **HP overlay**: "GAME OVER" text (orange) on GAME_OVER_HP phase
-- **Controls hint**: bottom text showing key bindings (including R to restart)
+- **Level complete overlay**: "LEVEL COMPLETE" text (green) with stats on LEVEL_COMPLETE phase
+- **Controls hint**: bottom text showing key bindings (including R to restart, reach EXIT to win)
 
 ### Sanity Sliding Scales
 ALL movement parameters interpolate smoothly across the full 0-12 sanity range via `getSanityT()`. At sanity 12 the zombie gets base values; at sanity 0 it gets the FERAL_*_MULT × base. No tier stepping — every tick of the slider changes feel. This eliminates dead zones where the slider does nothing (playtest finding: tier-stepped values made progression feel flat).
@@ -220,6 +248,15 @@ Tier layout:
 | CIVILIAN_FLEE_RANGE | 96 | px (flee trigger distance) |
 | CIVILIAN_SEEK_RANGE | 128 | px (placeholder for Sprint 2) |
 | CIVILIAN_WANDER_SPEED | 30 | px/s |
+| **Threat AI** | | |
+| THREAT_SPEED | 120 | px/s (patrol) |
+| THREAT_CHASE_SPEED | 200 | px/s (chase) |
+| THREAT_DAMAGE | 1 | HP per hit |
+| THREAT_DETECTION_RANGE | 160 | px (aggro range) |
+| THREAT_PATROL_RANGE | 128 | px (default patrol, no civilian) |
+| THREAT_GUARD_RANGE | 64 | px (patrol near guarded civilian) |
+| THREAT_LEASH_DISTANCE | 160 | px (max chase from anchor) |
+| POUNCE_SANITY_THRESHOLD | 4 | sanity below which pounce active |
 
 ## File Structure
 

@@ -199,6 +199,41 @@
   - Particle burst + screen shake on eat
   - Tuning panel: Per Eat, Scream Range, Scream Duration sliders
 
+## Sprint 2: Threat AI + Game Flow
+- [x] Task 2.1: Design decision — sanity-dependent pounce
+  - Feral (sanity < 4) kills threats on contact ("pounce attack")
+  - Lucid/Slipping touching a threat damages the zombie
+  - Ties into power/control tradeoff
+- [x] Tasks 2.2 + 2.3 + 2.6: Threat entity + guard patrol + tile collision
+  - createThreat(x, y) factory function
+  - areSamePlatform() for guard assignment
+  - assignGuards(state) — nearest alive same-platform civilian, prefer < 2 guards
+  - updateThreats() with GUARD_PATROL state (patrol near guarded civilian or patrolCenter)
+  - Edge avoidance: ground-ahead + wall-ahead checks
+  - 3 threats placed spread across map
+  - Rendered as red rectangles ("!" label), cyan outline when guarding
+  - Tuning panel: Threat AI section (8 sliders)
+  - "Respawn Threats" button in Entities section
+- [x] Task 2.4: Chase + scream response
+  - CHASE state: zombie within detection range AND within leash distance
+  - RESPONDING_TO_SCREAM state: move to alert target, timer-based
+  - broadcastScream() now alerts real threats within SCREAM_ALERT_RANGE
+  - Guard reassignment on civilian death (assignGuards called in checkEatCollision)
+  - Render colors: red (patrol), magenta (chase), yellow (scream response)
+- [x] Task 2.5: Threat-zombie collision + pounce
+  - checkThreatCollision(state): AABB overlap → pounce or damage
+  - Feral (sanity < POUNCE_SANITY_THRESHOLD): kill threat, particles, shake, reassign guards
+  - Non-Feral: damageZombie (respects iframes)
+  - threatsPounced stat tracked
+- [x] Tasks 2.7 + 2.8: Level exit + level complete
+  - findAndSetExit(): scan right side of map for valid 2-tile-high space
+  - checkExitZone(): AABB overlap zombie ↔ exit
+  - renderExitZone(): gold rectangle with pulsing border + "EXIT" label
+  - LEVEL_COMPLETE phase with green overlay + stats (time, eaten, HP, pounced)
+  - R to restart from level complete
+  - Time tracking: GameState.stats.timeElapsed += dt in game loop
+  - Exit placed on all map types (Gauntlet, generated, random)
+
 ## Upcoming
 
 ## Pre-Production Documents Created
