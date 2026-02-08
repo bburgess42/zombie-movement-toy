@@ -137,9 +137,19 @@
   - 13 edge cases prioritized (Must/Nice/Won't-handle)
   - Sanity economy model with timeline walkthrough
   - Implementation notes mapped to Sprint Backlog tasks 1.1-3.7
+- [x] Step 2.2: Civilian-threat ecology design (docs/CIVILIAN_ECOLOGY_SPEC.md)
+  - Living civilians replace static brain pickups (scope change from SCOPE_V1)
+  - Economy spec: sanity, HP, civilians, threat attention as resources
+  - Faction interaction matrix: zombie eats civilians, threats guard civilians, civilians flee
+  - Death scream mechanic: eating alerts threats within 128px for 3s
+  - Threat leash/guard behavior: threats patrol near assigned civilians
+  - 7 emergent behaviors identified (safe-first eating, threat consolidation, lure-and-eat, etc.)
+  - 4 new Lens #33 decision points (eat order, approach angle, scream management, when to stop)
+  - 10 edge cases, 10 balance levers, 7 warning signs
+  - Sprint Backlog impact analysis: +1M +1S new tasks, several modified tasks
 
 ## Upcoming
-- Sprint 1: Game systems foundation (sanity drain, health, brain pickups)
+- Sprint 1: Game systems foundation (sanity drain, health, civilian AI)
 
 ## Pre-Production Documents Created
 - [x] docs/SCOPE_V1.md — MoSCoW scope document (10 Must/7 Should/5 Stretch/12 Won't)
@@ -147,9 +157,8 @@
 - [x] docs/SPRINT_BACKLOG.md — 3 sprints for Milestone 1
 - [x] docs/FEEDBACK_MATRIX.md — Movement feedback audit (9 gaps identified)
 
-## DO NOT BUILD
-- Enemies, combat, AI, eating mechanic
-- Civilians, hunters, monsters
-- Sanity drain over time
-- Win/lose conditions
+## DO NOT BUILD (until Sprint 1)
 - Sound, sprites, animations, save/load
+- Multiple levels or level progression
+- Second threat type
+- Environmental narrative
