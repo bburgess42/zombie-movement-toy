@@ -1,6 +1,6 @@
 # Zombie Movement Toy — Architecture
 
-**Last updated:** Feb 2026 — Drift retune build
+**Last updated:** Feb 2026 — Playtest tuning pass
 
 ## Design Philosophy
 
@@ -20,7 +20,7 @@ Everything lives in `index.html`. The code is organized into clearly separated s
 6. **Sanity Tier Helpers** — Functions to get tier-adjusted movement values
 7. **Input Handling** — Keyboard event listeners, key state tracking
 8. **Physics Update** — Core movement loop (gravity, accel, friction, clamp, position)
-9. **Collision Detection** — AABB vs tile grid (Y-first resolution)
+9. **Collision Detection** — AABB vs tile grid (X-first resolution)
 10. **Jump System** — Coyote time, jump buffer, variable height
 11. **Input Drift** — Random impulses at Slipping/Feral tiers
 12. **Rendering** — Canvas drawing (tiles, zombie, direction indicator)
@@ -70,16 +70,20 @@ Input drift applies random horizontal velocity impulses on a timer. The timer re
 
 **Visual feedback:** When drift fires, `drift.flashTimer` is set to 0.15s. The renderer draws the zombie as a white flash that fades over that duration, with a tier-colored outline to maintain visibility. This closes Swink's feedback loop — the player can distinguish "the zombie fought me" from "I made a bad input."
 
-Feral tier additionally has an **input delay** on direction reversals: if the zombie is moving right and the player presses left, there's a 0.05s window where the left input is ignored. This simulates the zombie's body resisting direction changes — momentum commits you.
+Feral tier additionally has an **input delay** on direction reversals: if the zombie is moving right and the player presses left, there's a 0.03s window where the left input is ignored. This simulates the zombie's body resisting direction changes — momentum commits you.
 
 ## Sanity Sliding Scales
 
-Jump velocity and deceleration interpolate smoothly across the full 0-12 sanity range, not stepped by tier. This avoids jarring threshold effects when crossing tier boundaries.
+ALL movement parameters interpolate smoothly across the full 0-12 sanity range, not stepped by tier. This avoids jarring threshold effects when crossing tier boundaries and eliminates dead zones where the slider does nothing (playtest finding: tier-stepped speed/accel/air control made the progression feel flat between boundaries).
 
-- **FERAL_JUMP_MULT** (1.6): At sanity 0, jump velocity is 1.6x base. Linear interpolation from sanity 12 (1.0x) to sanity 0 (1.6x). Result: Feral zombie can reach platforms 9.7 tiles high vs Lucid's 4 tiles.
-- **FERAL_DECEL_MULT** (0.5): At sanity 0, deceleration is 0.5x base. Result: Feral zombie slides further, making precise platforming harder.
+The `getSanityT()` function provides the interpolation factor: `(12 - sanity) / 12`, yielding 0 at full Lucid and 1 at sanity 0. Each `get*()` helper uses the formula `BASE * (1 + t * (FERAL_*_MULT - 1))`.
 
-The `getSanityT()` function provides the interpolation factor: `(12 - sanity) / 12`, yielding 0 at full Lucid and 1 at sanity 0.
+- **FERAL_SPEED_MULT** (1.5): Max speed at sanity 0 is 1.5x base.
+- **FERAL_ACCEL_MULT** (1.6): Acceleration at sanity 0 is 1.6x base. Combined with BASE_ACCELERATION bump (1800→2400), starts feel snappy at all sanities.
+- **FERAL_AIR_CONTROL_MULT** (0.5): Air control at sanity 0 is 0.5x base (0.8 × 0.5 = 0.4).
+- **FERAL_JUMP_MULT** (1.6): Jump velocity at sanity 0 is 1.6x base. Feral zombie can reach ~9.7 tiles vs Lucid's ~4 tiles.
+- **FERAL_DECEL_MULT** (0.5): Deceleration at sanity 0 is 0.5x base. Feral zombie slides further, making precise platforming harder.
+- **FERAL_GRAVITY_MULT** (1.15): Gravity at sanity 0 is 1.15x base. Tightens jump arcs at low sanity so Feral feels punchy, not floaty (playtest finding: low-sanity jumps felt balloon-like without this).
 
 ## Sanity Gauntlet Map Design
 
@@ -93,7 +97,7 @@ Row 21 includes a 10-tile horizontal gap that Lucid max range (~8 tiles) cannot 
 `MAP_COLS`, `MAP_ROWS`, and `tileMap` are `let` rather than `const` so the generator can resize the world at runtime. The original Sanity Gauntlet is preserved as `PRESET_GAUNTLET` and can be restored via the "Gauntlet" button.
 
 ### Physics envelope calculation
-`calcJumpEnvelope(sanity)` derives reachable tile distances directly from the game's physics constants using kinematics: peak height = v²/(2g), horizontal range = maxSpeed × timeToPeak. This ensures generated platforms are reachable at the specified minimum sanity level without hardcoded tile-step values.
+`calcJumpEnvelope(sanity)` derives reachable tile distances directly from the game's physics constants using kinematics: peak height = v²/(2g), horizontal range = maxSpeed × timeToPeak. All three values (jump velocity, gravity, max speed) use the same smooth sanity interpolation as the runtime helpers. This ensures generated platforms are reachable at the specified minimum sanity level without hardcoded tile-step values.
 
 ### Section-based terrain
 Levels are divided into 3-5 sections, each randomly assigned one of five archetypes: **canyon** (ground gap + bridge), **tower** (vertical stack), **open** (scattered platforms), **corridor** (low ceiling), **staircase** (ascending/descending chain). No back-to-back repeats, and at least one tower or canyon is guaranteed. Each section gets its own ground treatment (gaps, raised bumps, partial coverage). Section boundaries always have 2 tiles of ground on each side for walkability.
@@ -112,6 +116,10 @@ After generation, a BFS flood from ground level checks every platform for reacha
 
 ### Seeded PRNG
 `splitmix32` provides deterministic random numbers from a seed, making layouts reproducible. The UI exposes both a seed input and a "Random" button that picks a new seed.
+
+## Variable Jump Height — One-Cut Fix
+
+The variable jump height system halves upward velocity when the jump key is released (`zombie.vy *= 0.5`). The original implementation ran this check every frame, meaning rapid key release during spam-jumping would multiply the cut across several frames (0.5^3 = 12.5% of original velocity in 3 frames), producing tiny jumps. Fix: a `jumpCut` flag on the zombie state is set to `false` when a jump starts and `true` after the first cut. The cut only fires when `jumpCut` is false, ensuring exactly one 50% velocity reduction per jump regardless of input timing.
 
 ## Ground Detection Fix
 

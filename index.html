@@ -222,7 +222,7 @@ canvas {
 
 // --- Base movement (Lucid tier) ---
 let BASE_MAX_SPEED = 300;          // px/s — top horizontal speed
-let BASE_ACCELERATION = 1800;      // px/s² — how fast we reach max speed
+let BASE_ACCELERATION = 2400;      // px/s² — how fast we reach max speed (was 1800, bumped for snappier starts)
 let BASE_DECELERATION = 3200;      // px/s² — friction when no input
 let BASE_AIR_CONTROL = 0.8;        // multiplier on accel while airborne
 
@@ -232,23 +232,18 @@ let GRAVITY = 1400;                // px/s² — downward pull
 let COYOTE_TIME = 0.1;            // seconds — grace period after leaving ground
 let JUMP_BUFFER_TIME = 0.1;       // seconds — pre-landing jump input memory
 
-// --- Sanity tier multipliers ---
-// Slipping (sanity 4-6.99): faster but slightly less controlled
-let SLIPPING_SPEED_MULT = 1.25;
-let SLIPPING_ACCEL_MULT = 1.3;
-let SLIPPING_AIR_CONTROL_MULT = 0.85;
-
-// Feral (sanity 0.01-3.99): fast, strong accel, poor air control
-let FERAL_SPEED_MULT = 1.5;
-let FERAL_ACCEL_MULT = 1.6;
-let FERAL_AIR_CONTROL_MULT = 0.5;
-
 // --- Sanity sliding scales ---
-// These scale smoothly with sanity (not stepped by tier).
+// ALL movement parameters interpolate smoothly across sanity 0-12.
 // At sanity 12 the zombie gets base values; at sanity 0 it gets
-// the FERAL_*_MULT × base. Linear interpolation between.
+// the FERAL_*_MULT × base. Linear interpolation between. This
+// eliminates dead zones where the slider does nothing (playtest
+// finding: tier-stepped values made the progression feel flat).
+let FERAL_SPEED_MULT = 1.5;       // max speed at sanity 0
+let FERAL_ACCEL_MULT = 1.6;       // acceleration at sanity 0
+let FERAL_AIR_CONTROL_MULT = 0.5; // air control at sanity 0 (0.8 * 0.5 = 0.4)
 let FERAL_JUMP_MULT = 1.6;        // jump strengthens as sanity drops
 let FERAL_DECEL_MULT = 0.5;       // friction weakens as sanity drops (more slidey)
+let FERAL_GRAVITY_MULT = 1.15;    // gravity increases as sanity drops (tighter arc, less floaty)
 
 // --- Input drift ---
 // Drift is the Thrill of Danger mechanic (Garneau/Heeter). Tuned
@@ -266,7 +261,7 @@ let SLIPPING_DRIFT_IMPULSE = 100;        // px/s (was 50)
 let FERAL_DRIFT_MIN_INTERVAL = 0.8;      // seconds (was 0.3)
 let FERAL_DRIFT_MAX_INTERVAL = 1.8;      // (was 0.8)
 let FERAL_DRIFT_IMPULSE = 500;           // px/s (tuned from playtest)
-let FERAL_INPUT_DELAY = 0.05;            // seconds — delay on direction reversal
+let FERAL_INPUT_DELAY = 0.03;            // seconds — delay on direction reversal (was 0.05, tightened for snappier reversal)
 
 // Airborne drift amplification — drift is scarier mid-jump
 let DRIFT_AIRBORNE_MULT = 2.0;           // impulse multiplier while not grounded
@@ -364,15 +359,16 @@ function calcJumpEnvelope(san) {
     const t = Math.max(0, Math.min(1, (12 - san) / 12));
     const jumpVel = Math.abs(JUMP_VELOCITY * (1 + t * (FERAL_JUMP_MULT - 1)));
 
+    // Gravity also scales with sanity
+    const grav = GRAVITY * (1 + t * (FERAL_GRAVITY_MULT - 1));
+
     // Peak height from kinematics: h = v² / (2g)
-    const peakPx = (jumpVel * jumpVel) / (2 * GRAVITY);
+    const peakPx = (jumpVel * jumpVel) / (2 * grav);
     const maxUpTiles = Math.floor(peakPx / TILE_SIZE);
 
     // Horizontal range at peak: time_to_peak = v/g, distance = speed * time
-    let maxSpeed = BASE_MAX_SPEED;
-    if (san < 4) maxSpeed *= FERAL_SPEED_MULT;
-    else if (san < 7) maxSpeed *= SLIPPING_SPEED_MULT;
-    const timeToPeak = jumpVel / GRAVITY;
+    const maxSpeed = BASE_MAX_SPEED * (1 + t * (FERAL_SPEED_MULT - 1));
+    const timeToPeak = jumpVel / grav;
     const horizPx = maxSpeed * timeToPeak;
     const maxAcrossTiles = Math.floor(horizPx / TILE_SIZE);
 
@@ -862,6 +858,7 @@ const zombie = {
     coyoteTimer: 0,      // time since last grounded (for coyote time)
     jumpBufferTimer: 0,  // time since jump was pressed (for jump buffering)
     wasGrounded: false,   // grounded state from previous frame
+    jumpCut: false,       // true after variable-height cut fires (prevents repeated cuts)
 };
 
 let sanity = 12;
@@ -908,17 +905,13 @@ function getTierColor(tier) {
 }
 
 function getMaxSpeed() {
-    const tier = getSanityTier(sanity);
-    if (tier === 'Feral')    return BASE_MAX_SPEED * FERAL_SPEED_MULT;
-    if (tier === 'Slipping') return BASE_MAX_SPEED * SLIPPING_SPEED_MULT;
-    return BASE_MAX_SPEED;
+    const t = getSanityT();
+    return BASE_MAX_SPEED * (1 + t * (FERAL_SPEED_MULT - 1));
 }
 
 function getAcceleration() {
-    const tier = getSanityTier(sanity);
-    let accel = BASE_ACCELERATION;
-    if (tier === 'Feral')    accel *= FERAL_ACCEL_MULT;
-    if (tier === 'Slipping') accel *= SLIPPING_ACCEL_MULT;
+    const t = getSanityT();
+    let accel = BASE_ACCELERATION * (1 + t * (FERAL_ACCEL_MULT - 1));
 
     // Reduce acceleration while airborne (air control)
     if (!zombie.grounded) {
@@ -949,10 +942,15 @@ function getJumpVelocity() {
 }
 
 function getAirControl() {
-    const tier = getSanityTier(sanity);
-    if (tier === 'Feral')    return BASE_AIR_CONTROL * FERAL_AIR_CONTROL_MULT;
-    if (tier === 'Slipping') return BASE_AIR_CONTROL * SLIPPING_AIR_CONTROL_MULT;
-    return BASE_AIR_CONTROL;
+    const t = getSanityT();
+    return BASE_AIR_CONTROL * (1 + t * (FERAL_AIR_CONTROL_MULT - 1));
+}
+
+// Gravity increases as sanity drops — tighter jump arcs at low
+// sanity so Feral feels punchy, not floaty (playtest finding).
+function getGravity() {
+    const t = getSanityT();
+    return GRAVITY * (1 + t * (FERAL_GRAVITY_MULT - 1));
 }
 
 // ============================================================
@@ -1017,7 +1015,7 @@ function updatePhysics(dt) {
     }
 
     // --- Gravity ---
-    zombie.vy += GRAVITY * dt;
+    zombie.vy += getGravity() * dt;
 
     // --- Horizontal input ---
     // Feral input delay: when reversing direction, block input briefly.
@@ -1226,11 +1224,13 @@ function updateJump() {
         zombie.grounded = false;
         zombie.coyoteTimer = COYOTE_TIME; // exhaust coyote time to prevent double jump
         zombie.jumpBufferTimer = 0;
+        zombie.jumpCut = false; // reset cut flag for new jump
     }
 
-    // Variable jump height: releasing jump early cuts upward velocity
-    if (!input.jumpHeld && zombie.vy < 0) {
+    // Variable jump height: releasing jump early cuts upward velocity (once)
+    if (!input.jumpHeld && zombie.vy < 0 && !zombie.jumpCut) {
         zombie.vy *= 0.5;
+        zombie.jumpCut = true;
     }
 }
 
@@ -1465,25 +1465,19 @@ const tuningParams = [
     { label: 'Coyote Time', key: 'COYOTE_TIME', min: 0, max: 0.3, step: 0.01 },
     { label: 'Jump Buffer', key: 'JUMP_BUFFER_TIME', min: 0, max: 0.3, step: 0.01 },
 
-    { section: 'Slipping Multipliers' },
-    { label: 'Speed ×', key: 'SLIPPING_SPEED_MULT', min: 1.0, max: 2.0, step: 0.05 },
-    { label: 'Accel ×', key: 'SLIPPING_ACCEL_MULT', min: 1.0, max: 2.0, step: 0.05 },
-    { label: 'Air Ctrl ×', key: 'SLIPPING_AIR_CONTROL_MULT', min: 0.1, max: 1.0, step: 0.05 },
-
-    { section: 'Feral Multipliers' },
+    { section: 'Sanity Sliding Scales' },
     { label: 'Speed ×', key: 'FERAL_SPEED_MULT', min: 1.0, max: 3.0, step: 0.1 },
     { label: 'Accel ×', key: 'FERAL_ACCEL_MULT', min: 1.0, max: 3.0, step: 0.1 },
     { label: 'Air Ctrl ×', key: 'FERAL_AIR_CONTROL_MULT', min: 0.1, max: 1.0, step: 0.05 },
+    { label: 'Jump ×', key: 'FERAL_JUMP_MULT', min: 1.0, max: 2.0, step: 0.05 },
+    { label: 'Decel ×', key: 'FERAL_DECEL_MULT', min: 0.1, max: 1.0, step: 0.05 },
+    { label: 'Gravity ×', key: 'FERAL_GRAVITY_MULT', min: 1.0, max: 2.0, step: 0.05 },
 
     { section: 'Drift' },
     { label: 'Slip Impulse', key: 'SLIPPING_DRIFT_IMPULSE', min: 10, max: 300, step: 10 },
     { label: 'Feral Impulse', key: 'FERAL_DRIFT_IMPULSE', min: 50, max: 500, step: 10 },
     { label: 'Airborne ×', key: 'DRIFT_AIRBORNE_MULT', min: 1.0, max: 4.0, step: 0.25 },
     { label: 'Feral Delay', key: 'FERAL_INPUT_DELAY', min: 0, max: 0.2, step: 0.01 },
-
-    { section: 'Sanity Scaling' },
-    { label: 'Feral Jump ×', key: 'FERAL_JUMP_MULT', min: 1.0, max: 2.0, step: 0.05 },
-    { label: 'Feral Decel ×', key: 'FERAL_DECEL_MULT', min: 0.1, max: 1.0, step: 0.05 },
 ];
 
 // We store references to the global variables via eval for live read/write.

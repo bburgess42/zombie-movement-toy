@@ -29,19 +29,23 @@
   - Gauntlet preset restores the original handcoded map
 
 ## Playtesting Tasks
-- [ ] Playtest Lucid tier — does it feel safe and precise?
-- [ ] Playtest Feral tier — does it feel fast but dangerous?
-- [ ] Evaluate jump arc satisfaction
-- [ ] Test momentum feel (too slidey? too sticky?)
+- [x] Playtest Lucid tier — felt sluggish, fixed: BASE_ACCELERATION 1800→2400
+- [x] Playtest Feral tier — reversal too slow, fixed: FERAL_INPUT_DELAY 0.05→0.03
+- [x] Evaluate jump arc satisfaction — floaty at low sanity, fixed: FERAL_GRAVITY_MULT 1.15
+- [x] Test momentum feel (too slidey? too sticky?) — feels good after tuning pass
 - [x] Evaluate input drift (annoying vs. interestingly scary?) — retuned: bigger/rarer impulses, airborne amplification, visual flash
+- [x] Evaluate tier progression — dead zones fixed: all params now smooth interpolation (no tier stepping)
+- [x] Test edge cases — spam jump bug found and fixed (jumpCut flag prevents repeated velocity cut)
 - [ ] Record tuned constant values
 
 ## Potential Refinements (only if movement feel needs it)
-- [ ] Adjust base constants after playtesting
+- [x] Adjust base constants after playtesting — BASE_ACCELERATION bumped, FERAL_INPUT_DELAY tightened
 - [x] Fine-tune drift intervals/impulse magnitudes — Feral 500 px/s every 0.8-1.8s, Slipping 100 px/s every 1.0-2.5s
-- [ ] Evaluate Feral input delay duration
+- [x] Evaluate Feral input delay duration — 0.05→0.03s
 - [x] Consider adding visual feedback for drift impulses — white flash with tier-colored outline
-- [ ] Test platform edge collision behavior
+- [x] Test platform edge collision behavior — no issues found
+- [x] Convert tier-stepped params to smooth interpolation — speed, accel, air control, gravity all interpolate via getSanityT()
+- [x] Fix variable jump height spam bug — jumpCut flag ensures one cut per jump
 
 ## Upcoming
 - (nothing currently planned)

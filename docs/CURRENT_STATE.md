@@ -1,6 +1,6 @@
 # Zombie Movement Toy — Current State
 
-**Version:** Drift retune build
+**Version:** Playtest tuning pass
 **Last updated:** Feb 2026
 
 ## Overview
@@ -14,29 +14,30 @@ Single-file HTML/JS movement prototype (`index.html`). Opens directly in any mod
 - Gravity-based vertical physics
 - Frame-rate independent (all physics multiplied by `dt`)
 - Air control multiplier (reduced accel while airborne)
-- Max speed clamping per sanity tier
+- Max speed clamping (sanity-interpolated)
+- Gravity scaling via sanity (tighter arcs at low sanity)
 
 ### Jump System
-- Variable jump height (releasing jump early halves upward velocity)
+- Variable jump height (releasing jump early halves upward velocity, once per jump)
 - Coyote time: 0.1s grace period after leaving ground
 - Jump buffering: 0.1s pre-landing input memory
 - Supports Space, W, and ArrowUp
 
 ### Sanity Tier System
-Sanity 0-12, controlled by slider. Tiers:
+Sanity 0-12, controlled by slider. Tiers determine drift behavior; all other movement parameters interpolate smoothly across the full range (no tier stepping).
 
-| Tier | Range | Effects |
-|------|-------|---------|
-| Lucid | 7-12 | Base values, crisp control |
-| Slipping | 4-6.99 | 1.25x speed, 1.3x accel, 0.85x air control, subtle drift |
-| Feral | 0.01-3.99 | 1.5x speed, 1.6x accel, 0.5x air control, heavy drift, input delay |
+| Tier | Range | Drift Effects |
+|------|-------|---------------|
+| Lucid | 7-12 | No drift |
+| Slipping | 4-6.99 | Subtle drift (±100 px/s every 1.0-2.5s) |
+| Feral | 0.01-3.99 | Heavy drift (±500 px/s every 0.8-1.8s) + 0.03s direction reversal delay |
 | Gone | 0 | No movement, "MIND LOST" overlay |
 
 ### Input Drift
 Tuned for bigger, rarer impulses (scary events, not constant annoyance). Amplified while airborne so drift is terrifying mid-jump but ignorable on flat ground. Visual flash on drift fire so the player can distinguish "drift pushed me" from "I messed up."
 
 - Slipping: random ±100 px/s impulse every 1.0-2.5s
-- Feral: random ±500 px/s impulse every 0.8-1.8s + 0.05s direction reversal delay
+- Feral: random ±500 px/s impulse every 0.8-1.8s + 0.03s direction reversal delay
 - Airborne multiplier: 2x impulse while not grounded
 - Visual feedback: zombie flashes white briefly when drift fires
 
@@ -72,10 +73,14 @@ Generator UI sliders: Width (20-60), Height (15-35), Density (0.1-0.9), Min Sani
 - **Controls hint**: bottom text showing key bindings
 
 ### Sanity Sliding Scales
-Jump velocity and deceleration now interpolate smoothly across the full 0-12 sanity range (not stepped by tier). At sanity 12 the zombie gets base values; at sanity 0 it gets the multiplied values. Creates a continuous feel progression.
+ALL movement parameters interpolate smoothly across the full 0-12 sanity range via `getSanityT()`. At sanity 12 the zombie gets base values; at sanity 0 it gets the FERAL_*_MULT × base. No tier stepping — every tick of the slider changes feel. This eliminates dead zones where the slider does nothing (playtest finding: tier-stepped values made progression feel flat).
 
-- `FERAL_JUMP_MULT` (1.6): Jump strengthens as sanity drops (sanity 1 peak ~309px / 9.7 tiles)
-- `FERAL_DECEL_MULT` (0.5): Friction weakens as sanity drops (more slidey at low sanity)
+- `FERAL_SPEED_MULT` (1.5): Max speed at sanity 0
+- `FERAL_ACCEL_MULT` (1.6): Acceleration at sanity 0
+- `FERAL_AIR_CONTROL_MULT` (0.5): Air control at sanity 0 (0.8 × 0.5 = 0.4)
+- `FERAL_JUMP_MULT` (1.6): Jump strengthens as sanity drops
+- `FERAL_DECEL_MULT` (0.5): Friction weakens as sanity drops (more slidey)
+- `FERAL_GRAVITY_MULT` (1.15): Gravity increases as sanity drops (tighter arcs, less floaty)
 
 ### Test Level — Sanity Gauntlet
 40x25 tile grid (1280x800 canvas). The "Sanity Gauntlet" is designed so platforms are impossible at full Lucid and require progressively lower sanity to reach, forcing the player to trade control for ability.
@@ -99,7 +104,7 @@ Tier layout:
 | Constant | Value | Unit |
 |----------|-------|------|
 | BASE_MAX_SPEED | 300 | px/s |
-| BASE_ACCELERATION | 1800 | px/s² |
+| BASE_ACCELERATION | 2400 | px/s² |
 | BASE_DECELERATION | 3200 | px/s² |
 | BASE_AIR_CONTROL | 0.8 | multiplier |
 | JUMP_VELOCITY | -600 | px/s |
@@ -107,8 +112,12 @@ Tier layout:
 | COYOTE_TIME | 0.1 | seconds |
 | JUMP_BUFFER_TIME | 0.1 | seconds |
 | TILE_SIZE | 32 | px |
+| FERAL_SPEED_MULT | 1.5 | multiplier (sanity-interpolated) |
+| FERAL_ACCEL_MULT | 1.6 | multiplier (sanity-interpolated) |
+| FERAL_AIR_CONTROL_MULT | 0.5 | multiplier (sanity-interpolated) |
 | FERAL_JUMP_MULT | 1.6 | multiplier (sanity-interpolated) |
 | FERAL_DECEL_MULT | 0.5 | multiplier (sanity-interpolated) |
+| FERAL_GRAVITY_MULT | 1.15 | multiplier (sanity-interpolated) |
 | SLIPPING_DRIFT_IMPULSE | 100 | px/s |
 | FERAL_DRIFT_IMPULSE | 500 | px/s |
 | DRIFT_AIRBORNE_MULT | 2.0 | multiplier (while not grounded) |
