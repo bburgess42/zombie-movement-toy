@@ -35,8 +35,8 @@ Everything lives in `index.html`. The code is organized into clearly separated s
 ### Constants as `let` instead of `const`
 The tuning panel needs to write to movement constants at runtime. Using `let` allows direct mutation. The constants are still grouped at the top of the file in a clearly labeled section — they're "constants" in design intent, not in language enforcement.
 
-### Y-before-X collision resolution
-Resolving vertical collisions before horizontal prevents the common "stuck on platform edge" bug where horizontal resolution fights with gravity. When the zombie is falling and sliding into a platform corner, Y resolution places them on top first, then X resolution has nothing to resolve.
+### X-before-Y collision resolution
+Each axis is moved and resolved independently: horizontal first, then vertical. Resolving X first prevents the "wall eats jump" bug where pressing into a wall causes the zombie's X to overlap the wall column, and the subsequent ceiling check sees the wall tile and kills the upward velocity. By resolving X first, horizontal position is corrected before any vertical checks run.
 
 ### Separate jumpPressed vs jumpHeld
 Variable jump height requires knowing when the jump key is *released* (to cut velocity), while jump buffering requires knowing when it was first *pressed* (to start the buffer timer). These are separate input signals — edge-triggered vs level-triggered.
@@ -52,12 +52,13 @@ The tuning panel uses `eval()` to read/write global variables by name. This is a
 Frame-rate independent via `dt` multiplication everywhere. The update order is:
 
 ```
-gravity → input acceleration → friction → speed clamp → position update → collision → jump timers → jump execution
+gravity → input acceleration → friction → speed clamp → X move + X collision → Y move + Y collision → jump timers → jump execution
 ```
 
 This order ensures:
 - Gravity is applied before collision (so landing detection works)
-- Collision happens after position update (so the zombie is never rendered inside a tile)
+- X is moved and resolved before Y (prevents "wall eats jump" — see collision section)
+- Collision happens after each axis move (so the zombie is never rendered inside a tile)
 - Jump timers update after collision (so grounded state is fresh)
 - Jump execution is last (so the zombie can jump the same frame they land)
 

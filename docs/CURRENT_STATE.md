@@ -38,7 +38,7 @@ Sanity 0-12, controlled by slider. Tiers:
 
 ### Collision Detection
 - AABB vs tile grid
-- Separate vertical/horizontal resolution (Y first)
+- Separate horizontal/vertical resolution (X first, then Y)
 - World boundary clamping
 - No clipping through platforms
 
