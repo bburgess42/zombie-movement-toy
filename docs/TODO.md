@@ -147,6 +147,12 @@
   - 4 new Lens #33 decision points (eat order, approach angle, scream management, when to stop)
   - 10 edge cases, 10 balance levers, 7 warning signs
   - Sprint Backlog impact analysis: +1M +1S new tasks, several modified tasks
+- [x] Step 2.3: Civilian variant design — stretch (docs/CIVILIAN_VARIANTS_SPEC.md)
+  - 3 types: Standard (+4 sanity), Sprinter (+2, fast flee), Brainiac (+6, near threats, large scream)
+  - Lens #34 (Triangularity) analysis: no dominant variant, context-dependent optimal choice
+  - Systems-balance analysis: 18 total sanity (tighter economy), net sanity modeling per type
+  - 8 edge cases, 8 tuning levers, 4 emergent behaviors
+  - Implementation notes mapped to entity structure and AI branches
 
 ## Upcoming
 - Sprint 1: Game systems foundation (sanity drain, health, civilian AI)

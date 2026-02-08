@@ -178,5 +178,13 @@ docs/
   TODO.md           — Task tracking
   ARCHITECTURE.md   — Architecture decisions
   GDD.md            — Game design document (from paper prototype)
+  SCOPE_V1.md       — MoSCoW scope document
+  MILESTONE_PLAN.md — 4 milestones
+  SPRINT_BACKLOG.md — Sprint tasks for Milestone 1
+  FEEDBACK_MATRIX.md — Movement feedback audit
+  SANITY_BALANCE_REPORT.md — Sanity system balance analysis
+  CORE_LOOP_SPEC.md — Core game loop mechanic spec
+  CIVILIAN_ECOLOGY_SPEC.md — Civilian-threat ecology design
+  CIVILIAN_VARIANTS_SPEC.md — Civilian variant types (stretch goal)
 handoff/            — Inter-window communication (gitignored)
 ```
