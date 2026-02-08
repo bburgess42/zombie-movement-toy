@@ -128,6 +128,16 @@
   - Generator pacing: subtle arc, clean layouts (pass)
   - Verdict: ready for Sprint 1
 
+## Phase 2: Core Loop Implementation
+- [x] Step 2.1: Core loop mechanic spec (docs/CORE_LOOP_SPEC.md)
+  - Mechanic spec following gamedev-design-doc template
+  - All 8 template sections filled (no TBD placeholders)
+  - 5 decision points with Lens #33 (Meaningful Choices) analysis
+  - Parameters grounded in GDD paper prototype data
+  - 13 edge cases prioritized (Must/Nice/Won't-handle)
+  - Sanity economy model with timeline walkthrough
+  - Implementation notes mapped to Sprint Backlog tasks 1.1-3.7
+
 ## Upcoming
 - Sprint 1: Game systems foundation (sanity drain, health, brain pickups)
 
