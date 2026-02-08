@@ -33,14 +33,14 @@
 - [ ] Playtest Feral tier — does it feel fast but dangerous?
 - [ ] Evaluate jump arc satisfaction
 - [ ] Test momentum feel (too slidey? too sticky?)
-- [ ] Evaluate input drift (annoying vs. interestingly scary?)
+- [x] Evaluate input drift (annoying vs. interestingly scary?) — retuned: bigger/rarer impulses, airborne amplification, visual flash
 - [ ] Record tuned constant values
 
 ## Potential Refinements (only if movement feel needs it)
 - [ ] Adjust base constants after playtesting
-- [ ] Fine-tune drift intervals/impulse magnitudes
+- [x] Fine-tune drift intervals/impulse magnitudes — Feral 500 px/s every 0.8-1.8s, Slipping 100 px/s every 1.0-2.5s
 - [ ] Evaluate Feral input delay duration
-- [ ] Consider adding visual feedback for drift impulses
+- [x] Consider adding visual feedback for drift impulses — white flash with tier-colored outline
 - [ ] Test platform edge collision behavior
 
 ## Upcoming

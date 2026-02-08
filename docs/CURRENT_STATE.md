@@ -1,6 +1,6 @@
 # Zombie Movement Toy — Current State
 
-**Version:** Level Generator build
+**Version:** Drift retune build
 **Last updated:** Feb 2026
 
 ## Overview
@@ -33,8 +33,12 @@ Sanity 0-12, controlled by slider. Tiers:
 | Gone | 0 | No movement, "MIND LOST" overlay |
 
 ### Input Drift
-- Slipping: random ±50 px/s impulse every 0.5-1.5s
-- Feral: random ±150 px/s impulse every 0.3-0.8s + 0.05s direction reversal delay
+Tuned for bigger, rarer impulses (scary events, not constant annoyance). Amplified while airborne so drift is terrifying mid-jump but ignorable on flat ground. Visual flash on drift fire so the player can distinguish "drift pushed me" from "I messed up."
+
+- Slipping: random ±100 px/s impulse every 1.0-2.5s
+- Feral: random ±500 px/s impulse every 0.8-1.8s + 0.05s direction reversal delay
+- Airborne multiplier: 2x impulse while not grounded
+- Visual feedback: zombie flashes white briefly when drift fires
 
 ### Collision Detection
 - AABB vs tile grid
@@ -105,6 +109,9 @@ Tier layout:
 | TILE_SIZE | 32 | px |
 | FERAL_JUMP_MULT | 1.6 | multiplier (sanity-interpolated) |
 | FERAL_DECEL_MULT | 0.5 | multiplier (sanity-interpolated) |
+| SLIPPING_DRIFT_IMPULSE | 100 | px/s |
+| FERAL_DRIFT_IMPULSE | 500 | px/s |
+| DRIFT_AIRBORNE_MULT | 2.0 | multiplier (while not grounded) |
 | MAP_COLS | 40 (default) | tiles (mutable, 20-60) |
 | MAP_ROWS | 25 (default) | tiles (mutable, 15-35) |
 

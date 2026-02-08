@@ -1,6 +1,6 @@
 # Zombie Movement Toy — Architecture
 
-**Last updated:** Feb 2026 — Level Generator build
+**Last updated:** Feb 2026 — Drift retune build
 
 ## Design Philosophy
 
@@ -64,7 +64,11 @@ This order ensures:
 
 ## Drift Model
 
-Input drift applies random horizontal velocity impulses on a timer. The timer resets to a random interval within the tier's range after each impulse. This creates irregular, unpredictable jolts rather than periodic wobble.
+Input drift applies random horizontal velocity impulses on a timer. The timer resets to a random interval within the tier's range after each impulse. Tuned for **bigger, rarer** impulses so each drift event is a noticeable "oh shit" moment rather than constant low-grade annoyance (playtest finding: frequent small impulses felt like a broken controller, not a scary loss of control).
+
+**Airborne amplification:** Drift impulse is multiplied by `DRIFT_AIRBORNE_MULT` (2.0) while the zombie is not grounded. This makes drift terrifying during jumps (where it can kill you) and ignorable on flat ground (where it just nudges you). The asymmetry is the key insight — drift should be scary *when it matters*, not constantly irritating.
+
+**Visual feedback:** When drift fires, `drift.flashTimer` is set to 0.15s. The renderer draws the zombie as a white flash that fades over that duration, with a tier-colored outline to maintain visibility. This closes Swink's feedback loop — the player can distinguish "the zombie fought me" from "I made a bad input."
 
 Feral tier additionally has an **input delay** on direction reversals: if the zombie is moving right and the player presses left, there's a 0.05s window where the left input is ignored. This simulates the zombie's body resisting direction changes — momentum commits you.
 
