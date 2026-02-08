@@ -251,16 +251,25 @@ let FERAL_JUMP_MULT = 1.6;        // jump strengthens as sanity drops
 let FERAL_DECEL_MULT = 0.5;       // friction weakens as sanity drops (more slidey)
 
 // --- Input drift ---
-// Slipping drift: subtle random impulses
-let SLIPPING_DRIFT_MIN_INTERVAL = 0.5;   // seconds
-let SLIPPING_DRIFT_MAX_INTERVAL = 1.5;
-let SLIPPING_DRIFT_IMPULSE = 50;          // px/s
+// Drift is the Thrill of Danger mechanic (Garneau/Heeter). Tuned
+// for bigger, rarer impulses so each drift event is a noticeable
+// "oh shit" moment rather than constant low-grade annoyance.
+// Airborne multiplier makes drift scariest when it matters most
+// (mid-jump over a gap) and ignorable on flat ground.
 
-// Feral drift: larger impulses + input delay on direction changes
-let FERAL_DRIFT_MIN_INTERVAL = 0.3;
-let FERAL_DRIFT_MAX_INTERVAL = 0.8;
-let FERAL_DRIFT_IMPULSE = 150;            // px/s
-let FERAL_INPUT_DELAY = 0.05;             // seconds — delay on direction reversal
+// Slipping drift: noticeable but manageable
+let SLIPPING_DRIFT_MIN_INTERVAL = 1.0;   // seconds (was 0.5)
+let SLIPPING_DRIFT_MAX_INTERVAL = 2.5;   // (was 1.5)
+let SLIPPING_DRIFT_IMPULSE = 100;        // px/s (was 50)
+
+// Feral drift: large, scary impulses + input delay on direction changes
+let FERAL_DRIFT_MIN_INTERVAL = 0.8;      // seconds (was 0.3)
+let FERAL_DRIFT_MAX_INTERVAL = 1.8;      // (was 0.8)
+let FERAL_DRIFT_IMPULSE = 500;           // px/s (tuned from playtest)
+let FERAL_INPUT_DELAY = 0.05;            // seconds — delay on direction reversal
+
+// Airborne drift amplification — drift is scarier mid-jump
+let DRIFT_AIRBORNE_MULT = 2.0;           // impulse multiplier while not grounded
 
 // ============================================================
 // TILE MAP
@@ -872,6 +881,7 @@ const drift = {
     nextInterval: 1.0,    // seconds until next drift impulse
     inputDelayTimer: 0,   // Feral-only: remaining input delay
     inputDelayDirection: 0, // which direction was blocked (-1 left, 1 right, 0 none)
+    flashTimer: 0,        // visual feedback: counts down after drift fires
 };
 
 // ============================================================
@@ -1232,12 +1242,18 @@ function updateJump() {
 // the player should feel slightly out of control without
 // feeling cheated.
 //
-// Slipping: small, infrequent impulses (subtle wrongness)
-// Feral: larger, frequent impulses (scary loss of control)
+// Tuned for bigger, rarer impulses (scary events, not constant
+// annoyance). Amplified while airborne so drift is terrifying
+// mid-jump but ignorable on flat ground. Visual flash on drift
+// (Swink: feedback layer) so the player can distinguish "the
+// zombie fought me" from "I made a bad input."
 // ============================================================
 
 function updateDrift(dt) {
     const tier = getSanityTier(sanity);
+
+    // Tick down drift flash regardless of tier
+    if (drift.flashTimer > 0) drift.flashTimer -= dt;
 
     if (tier !== 'Slipping' && tier !== 'Feral') {
         drift.timer = 0;
@@ -1262,12 +1278,20 @@ function updateDrift(dt) {
             impulse = SLIPPING_DRIFT_IMPULSE;
         }
 
+        // Airborne amplification — drift is scariest mid-jump
+        if (!zombie.grounded) {
+            impulse *= DRIFT_AIRBORNE_MULT;
+        }
+
         // Random next interval
         drift.nextInterval = minInterval + Math.random() * (maxInterval - minInterval);
 
         // Apply random horizontal impulse
         const direction = Math.random() < 0.5 ? -1 : 1;
         zombie.vx += direction * impulse;
+
+        // Trigger visual flash (0.15s duration)
+        drift.flashTimer = 0.15;
     }
 }
 
@@ -1306,10 +1330,27 @@ function render() {
 
     // --- Draw zombie ---
     const tier = getSanityTier(sanity);
-    const zombieColor = getTierColor(tier);
+    let zombieColor = getTierColor(tier);
+
+    // Drift flash: brief white flash when drift impulse fires.
+    // Visual feedback so the player knows "that was drift, not me"
+    // (Swink: closing the input -> simulation -> feedback loop).
+    if (drift.flashTimer > 0) {
+        const flashIntensity = drift.flashTimer / 0.15; // 1.0 -> 0.0
+        // Blend toward white based on flash intensity
+        zombieColor = `rgba(255, 255, 255, ${0.3 + 0.7 * flashIntensity})`;
+    }
 
     ctx.fillStyle = zombieColor;
     ctx.fillRect(zombie.x, zombie.y, zombie.width, zombie.height);
+
+    // Draw the tier color as an outline during flash so the zombie
+    // doesn't become invisible — the flash overlays, not replaces
+    if (drift.flashTimer > 0) {
+        ctx.strokeStyle = getTierColor(tier);
+        ctx.lineWidth = 2;
+        ctx.strokeRect(zombie.x, zombie.y, zombie.width, zombie.height);
+    }
 
     // "Z" label
     ctx.fillStyle = '#000';
@@ -1435,8 +1476,9 @@ const tuningParams = [
     { label: 'Air Ctrl ×', key: 'FERAL_AIR_CONTROL_MULT', min: 0.1, max: 1.0, step: 0.05 },
 
     { section: 'Drift' },
-    { label: 'Slip Impulse', key: 'SLIPPING_DRIFT_IMPULSE', min: 10, max: 200, step: 10 },
-    { label: 'Feral Impulse', key: 'FERAL_DRIFT_IMPULSE', min: 50, max: 400, step: 10 },
+    { label: 'Slip Impulse', key: 'SLIPPING_DRIFT_IMPULSE', min: 10, max: 300, step: 10 },
+    { label: 'Feral Impulse', key: 'FERAL_DRIFT_IMPULSE', min: 50, max: 500, step: 10 },
+    { label: 'Airborne ×', key: 'DRIFT_AIRBORNE_MULT', min: 1.0, max: 4.0, step: 0.25 },
     { label: 'Feral Delay', key: 'FERAL_INPUT_DELAY', min: 0, max: 0.2, step: 0.01 },
 
     { section: 'Sanity Scaling' },
