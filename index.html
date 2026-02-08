@@ -245,26 +245,51 @@ let FERAL_JUMP_MULT = 1.6;        // jump strengthens as sanity drops
 let FERAL_DECEL_MULT = 0.5;       // friction weakens as sanity drops (more slidey)
 let FERAL_GRAVITY_MULT = 1.15;    // gravity increases as sanity drops (tighter arc, less floaty)
 
-// --- Input drift ---
-// Drift is the Thrill of Danger mechanic (Garneau/Heeter). Tuned
-// for bigger, rarer impulses so each drift event is a noticeable
-// "oh shit" moment rather than constant low-grade annoyance.
-// Airborne multiplier makes drift scariest when it matters most
-// (mid-jump over a gap) and ignorable on flat ground.
-
-// Slipping drift: noticeable but manageable
-let SLIPPING_DRIFT_MIN_INTERVAL = 1.0;   // seconds (was 0.5)
-let SLIPPING_DRIFT_MAX_INTERVAL = 2.5;   // (was 1.5)
-let SLIPPING_DRIFT_IMPULSE = 100;        // px/s (was 50)
-
-// Feral drift: large, scary impulses + input delay on direction changes
-let FERAL_DRIFT_MIN_INTERVAL = 0.8;      // seconds (was 0.3)
-let FERAL_DRIFT_MAX_INTERVAL = 1.8;      // (was 0.8)
-let FERAL_DRIFT_IMPULSE = 500;           // px/s (tuned from playtest)
-let FERAL_INPUT_DELAY = 0.03;            // seconds — delay on direction reversal (was 0.05, tightened for snappier reversal)
-
-// Airborne drift amplification — drift is scarier mid-jump
+// --- Input drift (smooth system) ---
+// Drift is the Thrill of Danger mechanic (Garneau/Heeter). Drift
+// impulse and interval now interpolate smoothly via getSanityT()
+// instead of stepping at tier boundaries. This eliminates the
+// "Lucid free zone" (sanity 7-12 was zero cost) and the "Feral
+// cliff" (28× cost increase for 5.6% gain at the 4→3.99 boundary).
+//
+// Impulse uses a squared curve (t²) so drift starts very gently
+// at high sanity and accelerates into devastating at low sanity.
+// Position nudge + velocity residue replaces pure velocity impulse
+// so both same-direction and reverse drift are visible.
+let DRIFT_BASE_IMPULSE = 500;            // max impulse (px/s equivalent) at sanity 0
+let DRIFT_MIN_INTERVAL = 0.8;            // shortest interval between drifts (at sanity 0)
+let DRIFT_MAX_INTERVAL = 5.0;            // longest interval (at sanity 12, effectively never)
+let DRIFT_IMPULSE_EXPONENT = 2;          // curve shape: higher = gentler start, sharper end
 let DRIFT_AIRBORNE_MULT = 2.0;           // impulse multiplier while not grounded
+let DRIFT_NUDGE_SCALE = 0.1;             // px displacement per px/s of impulse (position nudge)
+let DRIFT_VELOCITY_RESIDUE = 0.3;        // fraction of impulse applied as velocity change
+
+// --- Input delay (smooth onset) ---
+// Direction reversal delay now starts at sanity 6 (INPUT_DELAY_ONSET_T = 0.5)
+// and scales to full at sanity 0. Previously only existed at Feral tier.
+let FERAL_INPUT_DELAY = 0.03;            // max delay at sanity 0 (seconds)
+let INPUT_DELAY_ONSET_T = 0.5;           // getSanityT() threshold where delay begins (sanity 6)
+
+// --- Juice / feedback ---
+// Feedback parameters for squash/stretch, particles, shake, and
+// vignette. These close Swink's simulation → feedback loop so
+// player actions feel alive instead of just moving a rectangle.
+let SCALE_LERP_RATE = 12;               // how fast squash/stretch returns to 1.0 (per second)
+let JUMP_SQUASH_X = 1.15;               // horizontal stretch on jump launch
+let JUMP_SQUASH_Y = 0.80;               // vertical compress on jump launch
+let LAND_STRETCH_MAX_Y = 0.20;          // max vertical stretch on landing (added to 1.0)
+let LAND_SQUASH_MAX_X = 0.12;           // max horizontal compress on landing (subtracted from 1.0)
+let LAND_VY_SCALE = 3000;               // vy divisor for landing intensity (higher = less intense)
+let LANDING_SHAKE_MIN_VY = 400;         // minimum vy to trigger landing screen shake
+let LANDING_SHAKE_INTENSITY = 4;        // max shake pixels for heaviest landing
+let REVERSAL_SQUASH_X = 0.90;           // horizontal compress on high-speed direction reversal
+let REVERSAL_MIN_SPEED = 200;           // minimum |vx| before reversal to trigger dust/squash
+let PARTICLE_GRAVITY = 100;             // px/s² downward on dust particles
+let VIGNETTE_MAX_OPACITY = 0.25;        // max vignette opacity at sanity 0
+let SPEED_LINE_THRESHOLD = 0.8;         // fraction of max speed to start showing lines
+let SPEED_LINE_OPACITY = 0.3;           // max opacity of speed lines
+let PACING_ENABLED = true;
+let PACING_DIFFICULTY_SCALE = 1.0;      // 0.5=easier, 1.5=harder
 
 // ============================================================
 // TILE MAP
@@ -489,6 +514,63 @@ function placeRow(grid, y, x1, x2, width) {
     }
 }
 
+// --- PACING DATA TABLES ---
+const PACING_BEATS = {
+    3: [
+        { beat: 'hook',       difficulty: 0.5 },
+        { beat: 'climax',     difficulty: 0.9 },
+        { beat: 'resolution', difficulty: 0.3 },
+    ],
+    4: [
+        { beat: 'hook',       difficulty: 0.5 },
+        { beat: 'rising',     difficulty: 0.6 },
+        { beat: 'climax',     difficulty: 0.9 },
+        { beat: 'resolution', difficulty: 0.3 },
+    ],
+    5: [
+        { beat: 'hook',       difficulty: 0.5 },
+        { beat: 'rising',     difficulty: 0.65 },
+        { beat: 'valley',     difficulty: 0.25 },
+        { beat: 'climax',     difficulty: 0.9 },
+        { beat: 'resolution', difficulty: 0.3 },
+    ],
+};
+
+// Weighted archetype preferences per beat (higher = more likely)
+const BEAT_ARCHETYPE_WEIGHTS = {
+    hook:       { canyon: 3, tower: 3, open: 1, corridor: 1, staircase: 2 },
+    rising:     { canyon: 1, tower: 3, open: 1, corridor: 1, staircase: 3 },
+    valley:     { canyon: 1, tower: 0, open: 3, corridor: 3, staircase: 1 },
+    climax:     { canyon: 3, tower: 3, open: 1, corridor: 2, staircase: 2 },
+    resolution: { canyon: 1, tower: 0, open: 3, corridor: 3, staircase: 1 },
+};
+
+/** Pick archetype via weighted random from beat preferences, no back-to-back */
+function selectArchetype(beat, rng, lastType) {
+    const weights = BEAT_ARCHETYPE_WEIGHTS[beat];
+    const entries = Object.entries(weights).filter(([t, w]) => t !== lastType && w > 0);
+    const total = entries.reduce((sum, [, w]) => sum + w, 0);
+    let roll = rng() * total;
+    for (const [type, w] of entries) {
+        roll -= w;
+        if (roll <= 0) return type;
+    }
+    return entries[entries.length - 1][0];
+}
+
+/** Place transition zone at section boundary: 3-tile ground + optional perch */
+function applyTransitionZone(grid, leftSec, rightSec, groundY, width) {
+    const bx = rightSec.sx;
+    const clamp = (x) => Math.max(1, Math.min(x, width - 2));
+    // 3 tiles of ground at boundary
+    for (let x = bx - 1; x <= bx + 1; x++) grid[groundY][clamp(x)] = true;
+    // Perch platform when difficulty delta is steep
+    const delta = Math.abs((leftSec.difficulty || 0) - (rightSec.difficulty || 0));
+    if (delta > 0.3 && groundY - 3 > 2) {
+        placeRow(grid, groundY - 3, clamp(bx - 1), clamp(bx + 1), width);
+    }
+}
+
 /** Random platform length with personality: mix of tiny, medium, and wide */
 function randPlatLen(rng, density) {
     const roll = rng();
@@ -497,16 +579,18 @@ function randPlatLen(rng, density) {
     return 5 + Math.floor(rng() * Math.max(1, Math.round(3 * density)));       // wide: 5-7+
 }
 
-/** Generate a single section by archetype */
-function generateSection(grid, type, sx, ex, groundY, height, width, rng, density, maxUp, maxAcross) {
+/** Generate a single section by archetype. difficulty 0-1 modulates parameters. */
+function generateSection(grid, type, sx, ex, groundY, height, width, rng, density, maxUp, maxAcross, difficulty) {
+    const d = typeof difficulty === 'number' ? difficulty : 0.5;
     const secW = ex - sx + 1;
     const clamp = (x) => Math.max(1, Math.min(x, width - 2));
 
     switch (type) {
 
         case 'canyon': {
-            // Ground on sides, jumpable gap in the middle
-            const gapW = 2 + Math.floor(rng() * Math.min(maxAcross - 1, secW - 6));
+            // Gap min width scales up with difficulty
+            const minGap = 2 + Math.floor(d * 2);
+            const gapW = minGap + Math.floor(rng() * Math.max(1, Math.min(maxAcross - 1, secW - 6) - minGap + 1));
             const gapMid = sx + Math.floor(secW / 2) + Math.floor(rng() * 3) - 1;
             const gs = clamp(gapMid - Math.floor(gapW / 2));
             const ge = clamp(gs + gapW - 1);
@@ -515,8 +599,8 @@ function generateSection(grid, type, sx, ex, groundY, height, width, rng, densit
                 if (x < gs || x > ge) grid[groundY][x] = true;
             }
 
-            // Bridge platform above the gap
-            const bridgeY = groundY - Math.max(2, Math.floor(maxUp * 0.4));
+            // Bridge height scales up with difficulty
+            const bridgeY = groundY - Math.max(2, Math.floor(maxUp * (0.3 + d * 0.3)));
             if (bridgeY > 2) {
                 placeRow(grid, bridgeY, gs - 1, ge + 1, width);
             }
@@ -535,19 +619,21 @@ function generateSection(grid, type, sx, ex, groundY, height, width, rng, densit
             // Ground floor
             for (let x = sx; x <= ex; x++) grid[groundY][x] = true;
 
-            // Vertical stack of alternating offset platforms
+            // Vertical stack — step-up height increases with difficulty, platforms narrower
             const towerCenter = sx + Math.floor(secW / 2) + Math.floor(rng() * 3) - 1;
             let towerY = groundY;
             let tier = 0;
+            const towerDensity = density * (1.2 - d * 0.6);
             while (true) {
-                const stepUp = 2 + Math.floor(rng() * Math.max(1, maxUp - 2));
+                const baseStep = 2 + Math.floor(d * 1.5);
+                const stepUp = baseStep + Math.floor(rng() * Math.max(1, maxUp - baseStep));
                 const nextY = towerY - stepUp;
                 if (nextY <= 2) break;
 
                 const offset = (tier % 2 === 0)
                     ? -(1 + Math.floor(rng() * 2))
                     : (1 + Math.floor(rng() * 2));
-                const pLen = randPlatLen(rng, density);
+                const pLen = randPlatLen(rng, towerDensity);
                 const px = clamp(towerCenter + offset - Math.floor(pLen / 2));
                 placeRow(grid, nextY, px, px + pLen - 1, width);
 
@@ -566,10 +652,11 @@ function generateSection(grid, type, sx, ex, groundY, height, width, rng, densit
         }
 
         case 'open': {
-            // Partial ground with gaps and raised sections
+            // Ground coverage decreases with difficulty (75% at d=0, 43% at d=1)
+            const groundProb = 0.75 - d * 0.32;
             let x = sx;
             while (x <= ex) {
-                if (rng() < 0.65) {
+                if (rng() < groundProb) {
                     const segLen = 3 + Math.floor(rng() * 5);
                     for (let gx = x; gx < Math.min(x + segLen, ex + 1); gx++) {
                         grid[groundY][gx] = true;
@@ -583,7 +670,9 @@ function generateSection(grid, type, sx, ex, groundY, height, width, rng, densit
                     }
                     x += segLen;
                 } else {
-                    x += 1 + Math.floor(rng() * Math.min(3, maxAcross));
+                    // Ground gap width scales up with difficulty
+                    const maxGap = Math.min(3 + Math.floor(d * 2), maxAcross);
+                    x += 1 + Math.floor(rng() * maxGap);
                 }
             }
 
@@ -599,14 +688,15 @@ function generateSection(grid, type, sx, ex, groundY, height, width, rng, densit
         }
 
         case 'corridor': {
-            // Full ground with low ceiling — creates cramped lower path
+            // Full ground with low ceiling — ceiling lower at high difficulty
             for (let x = sx; x <= ex; x++) grid[groundY][x] = true;
 
-            const ceilY = groundY - 3 - Math.floor(rng() * 2);
+            const ceilHeight = 3 + Math.floor((1 - d) * 2);
+            const ceilY = groundY - ceilHeight;
             for (let x = sx; x <= ex; x++) grid[ceilY][x] = true;
 
-            // Punch gaps in the ceiling for transitions
-            const gapCount = 1 + Math.floor(rng() * 2);
+            // Fewer ceiling gaps at high difficulty
+            const gapCount = 1 + Math.floor(rng() * Math.max(1, 3 - Math.floor(d * 2)));
             for (let g = 0; g < gapCount; g++) {
                 const gx = sx + 1 + Math.floor(rng() * (secW - 4));
                 const gLen = 2 + Math.floor(rng() * 2);
@@ -626,8 +716,8 @@ function generateSection(grid, type, sx, ex, groundY, height, width, rng, densit
                 }
             }
 
-            // Raised ground bump
-            if (rng() < 0.5) {
+            // More ground bumps at high difficulty
+            if (rng() < 0.4 + d * 0.3) {
                 const bx = sx + 1 + Math.floor(rng() * (secW - 4));
                 const bLen = 2 + Math.floor(rng() * 3);
                 for (let x = bx; x < Math.min(bx + bLen, ex + 1); x++) {
@@ -646,20 +736,23 @@ function generateSection(grid, type, sx, ex, groundY, height, width, rng, densit
             const gEnd = ascending ? sx + Math.floor(secW * 0.5) : ex;
             for (let x = gStart; x <= gEnd; x++) grid[groundY][x] = true;
 
-            // Step chain
+            // Rise and run scale up with difficulty, platforms narrower
             const stepCount = 3 + Math.floor(rng() * 3);
             let stepY = groundY;
             let stepX = ascending ? sx + 2 : ex - 2;
             const dir = ascending ? 1 : -1;
+            const stairDensity = density * (1.1 - d * 0.4);
 
             for (let s = 0; s < stepCount; s++) {
-                const rise = 1 + Math.floor(rng() * Math.max(1, Math.floor(maxUp * 0.4)));
-                const run = 2 + Math.floor(rng() * Math.max(1, maxAcross - 1));
+                const riseMax = Math.max(1, Math.floor(maxUp * (0.3 + d * 0.2)));
+                const rise = 1 + Math.floor(rng() * riseMax);
+                const runMax = Math.max(1, maxAcross - 1 + Math.floor(d * 2));
+                const run = 2 + Math.floor(rng() * runMax);
                 stepY -= rise;
                 stepX += dir * run;
                 if (stepY <= 2 || stepX < sx + 1 || stepX > ex - 1) break;
 
-                const pLen = randPlatLen(rng, density);
+                const pLen = randPlatLen(rng, stairDensity);
                 placeRow(grid, stepY, clamp(stepX), clamp(stepX + pLen - 1), width);
             }
             break;
@@ -734,34 +827,52 @@ function generateLevel(width, height, density, minSanity, seed) {
 
     const sections = [];
     let lastType = null;
-    for (let i = 0; i < sectionCount; i++) {
-        const sx = 1 + i * secW;
-        const ex = (i === sectionCount - 1) ? width - 2 : sx + secW - 1;
-        let available = archetypes.filter(t => t !== lastType);
-        const type = available[Math.floor(rng() * available.length)];
-        lastType = type;
-        sections.push({ sx, ex, type });
+
+    if (PACING_ENABLED) {
+        // Pacing-aware sequencer: follow Schell's interest curve
+        const beats = PACING_BEATS[sectionCount] || PACING_BEATS[5];
+        for (let i = 0; i < sectionCount; i++) {
+            const sx = 1 + i * secW;
+            const ex = (i === sectionCount - 1) ? width - 2 : sx + secW - 1;
+            const beat = beats[Math.min(i, beats.length - 1)];
+            const type = selectArchetype(beat.beat, rng, lastType);
+            const diff = Math.min(1.0, beat.difficulty * PACING_DIFFICULTY_SCALE);
+            lastType = type;
+            sections.push({ sx, ex, type, difficulty: diff });
+        }
+    } else {
+        // Original random behavior (no pacing)
+        for (let i = 0; i < sectionCount; i++) {
+            const sx = 1 + i * secW;
+            const ex = (i === sectionCount - 1) ? width - 2 : sx + secW - 1;
+            let available = archetypes.filter(t => t !== lastType);
+            const type = available[Math.floor(rng() * available.length)];
+            lastType = type;
+            sections.push({ sx, ex, type, difficulty: 0.5 });
+        }
+        // Guarantee at least one tower or canyon for vertical interest
+        if (!sections.some(s => s.type === 'tower' || s.type === 'canyon')) {
+            const idx = 1 + Math.floor(rng() * Math.max(1, sections.length - 2));
+            sections[idx].type = rng() < 0.5 ? 'tower' : 'canyon';
+        }
     }
 
-    // Guarantee at least one tower or canyon for vertical interest
-    if (!sections.some(s => s.type === 'tower' || s.type === 'canyon')) {
-        const idx = 1 + Math.floor(rng() * Math.max(1, sections.length - 2));
-        sections[idx].type = rng() < 0.5 ? 'tower' : 'canyon';
-    }
-
-    // Generate each section
+    // Generate each section with its difficulty
     for (const sec of sections) {
         generateSection(grid, sec.type, sec.sx, sec.ex,
-            groundY, height, width, rng, density, maxUpTiles, maxAcrossTiles);
+            groundY, height, width, rng, density, maxUpTiles, maxAcrossTiles, sec.difficulty);
     }
 
-    // Ensure ground continuity at section boundaries (2 tiles each edge)
-    for (const sec of sections) {
-        grid[groundY][sec.sx] = true;
-        if (sec.sx + 1 <= sec.ex) grid[groundY][sec.sx + 1] = true;
-        grid[groundY][sec.ex] = true;
-        if (sec.ex - 1 >= sec.sx) grid[groundY][sec.ex - 1] = true;
+    // Transition zones at section boundaries
+    for (let i = 1; i < sections.length; i++) {
+        applyTransitionZone(grid, sections[i - 1], sections[i], groundY, width);
     }
+    // Ensure first and last section edges have ground
+    const first = sections[0], last = sections[sections.length - 1];
+    grid[groundY][first.sx] = true;
+    if (first.sx + 1 <= first.ex) grid[groundY][first.sx + 1] = true;
+    grid[groundY][last.ex] = true;
+    if (last.ex - 1 >= last.sx) grid[groundY][last.ex - 1] = true;
 
     // --- LANDMARKS ---
     injectLandmarks(grid, width, height, groundY, rng, maxUpTiles);
@@ -859,6 +970,9 @@ const zombie = {
     jumpBufferTimer: 0,  // time since jump was pressed (for jump buffering)
     wasGrounded: false,   // grounded state from previous frame
     jumpCut: false,       // true after variable-height cut fires (prevents repeated cuts)
+    scaleX: 1,            // squash/stretch horizontal (1.0 = normal)
+    scaleY: 1,            // squash/stretch vertical (1.0 = normal)
+    lastVy: 0,            // vy at moment of landing (for intensity scaling)
 };
 
 let sanity = 12;
@@ -879,6 +993,23 @@ const drift = {
     inputDelayTimer: 0,   // Feral-only: remaining input delay
     inputDelayDirection: 0, // which direction was blocked (-1 left, 1 right, 0 none)
     flashTimer: 0,        // visual feedback: counts down after drift fires
+    flashDirection: 0,    // which side drift pushed toward (-1 left, 1 right)
+    lastImpulse: 0,       // magnitude of most recent drift impulse (for rendering)
+};
+
+// Juice state — particles, camera shake
+// Architecture note: particles are a flat array rather than a linked
+// list because the count is small (< 30 at any time) and array
+// iteration is cache-friendly. Camera shake uses exponential decay
+// for natural-feeling falloff.
+const particles = [];
+const camera = {
+    shakeX: 0,
+    shakeY: 0,
+    shakeIntensity: 0,
+    shakeDuration: 0,
+    shakeTimer: 0,
+    shakeBiasX: 0,        // directional bias (-1 left, 0 neutral, 1 right)
 };
 
 // ============================================================
@@ -953,6 +1084,26 @@ function getGravity() {
     return GRAVITY * (1 + t * (FERAL_GRAVITY_MULT - 1));
 }
 
+// Drift impulse: t² curve — gentle at high sanity, devastating at low.
+// At sanity 12: 0. At sanity 7: ~87. At sanity 3: ~281. At sanity 0: 500.
+function getDriftImpulse() {
+    const t = getSanityT();
+    return DRIFT_BASE_IMPULSE * Math.pow(t, DRIFT_IMPULSE_EXPONENT);
+}
+
+// Drift interval: linear from MAX_INTERVAL at sanity 12 to MIN at sanity 0.
+function getDriftInterval() {
+    const t = getSanityT();
+    return DRIFT_MAX_INTERVAL - (DRIFT_MAX_INTERVAL - DRIFT_MIN_INTERVAL) * t;
+}
+
+// Input delay: 0 above onset threshold, scales to FERAL_INPUT_DELAY at sanity 0.
+function getInputDelay() {
+    const t = getSanityT();
+    if (t <= INPUT_DELAY_ONSET_T) return 0;
+    return FERAL_INPUT_DELAY * (t - INPUT_DELAY_ONSET_T) / (1 - INPUT_DELAY_ONSET_T);
+}
+
 // ============================================================
 // INPUT HANDLING
 // Tracks key state for movement and jump. Supports both WASD
@@ -1018,30 +1169,38 @@ function updatePhysics(dt) {
     zombie.vy += getGravity() * dt;
 
     // --- Horizontal input ---
-    // Feral input delay: when reversing direction, block input briefly.
-    // This makes momentum feel more committal at low sanity — the zombie's
-    // body resists changing direction (Swink: simulation weight).
+    // Input delay: when reversing direction at low sanity, block input
+    // briefly. Starts at sanity 6 (INPUT_DELAY_ONSET_T = 0.5), scales
+    // smoothly to full at sanity 0. Makes momentum feel more committal
+    // as the zombie loses its mind (Swink: simulation weight).
     let effectiveLeft = input.left;
     let effectiveRight = input.right;
 
-    if (tier === 'Feral' && drift.inputDelayTimer > 0) {
+    if (drift.inputDelayTimer > 0) {
         drift.inputDelayTimer -= dt;
         if (drift.inputDelayDirection === -1) effectiveLeft = false;
         if (drift.inputDelayDirection === 1) effectiveRight = false;
     }
 
-    // Check for direction reversal to trigger Feral input delay
-    if (tier === 'Feral') {
+    // Check for direction reversal to trigger input delay (smooth onset)
+    const currentDelay = getInputDelay();
+    if (currentDelay > 0) {
         if (effectiveLeft && zombie.vx > 50) {
-            drift.inputDelayTimer = FERAL_INPUT_DELAY;
+            drift.inputDelayTimer = currentDelay;
             drift.inputDelayDirection = -1;
             effectiveLeft = false;
         } else if (effectiveRight && zombie.vx < -50) {
-            drift.inputDelayTimer = FERAL_INPUT_DELAY;
+            drift.inputDelayTimer = currentDelay;
             drift.inputDelayDirection = 1;
             effectiveRight = false;
         }
     }
+
+    // --- Detect high-speed direction reversal for juice ---
+    // Capture vx sign BEFORE acceleration so we can detect when
+    // input reverses the zombie's direction this frame.
+    const prevVxSign = Math.sign(zombie.vx);
+    const prevVxAbs = Math.abs(zombie.vx);
 
     const accel = getAcceleration();
     if (effectiveLeft)  zombie.vx -= accel * dt;
@@ -1068,9 +1227,25 @@ function updatePhysics(dt) {
     clampWorldBoundsX();
     resolveHorizontal();
 
+    // Save vy before vertical collision for landing intensity scaling
+    zombie.lastVy = zombie.vy;
+
     zombie.y += zombie.vy * dt;
     clampWorldBoundsY();
     resolveVertical();
+
+    // --- Reversal juice trigger ---
+    // Fire when the zombie was moving fast in one direction and
+    // acceleration reversed the sign this frame.
+    const newVxSign = Math.sign(zombie.vx);
+    if (prevVxSign !== 0 && newVxSign !== 0 && prevVxSign !== newVxSign
+        && prevVxAbs > REVERSAL_MIN_SPEED) {
+        zombie.scaleX = REVERSAL_SQUASH_X;
+        if (zombie.grounded) {
+            emitDust(zombie.x + zombie.width / 2, zombie.y + zombie.height,
+                2, -prevVxSign * 40, 30);
+        }
+    }
 
     // --- Jump timers ---
     updateJumpTimers(dt);
@@ -1199,6 +1374,30 @@ function resolveHorizontal() {
 // ============================================================
 
 function updateJumpTimers(dt) {
+    // --- Landing detection (before wasGrounded is overwritten) ---
+    // Check grounded transition: was airborne last frame, grounded now.
+    // This is the landing frame — trigger stretch, dust, and shake.
+    if (zombie.grounded && !zombie.wasGrounded) {
+        const landVy = Math.abs(zombie.lastVy);
+
+        // Stretch on landing — intensity scales with fall speed
+        const stretchY = 1.0 + Math.min(LAND_STRETCH_MAX_Y, landVy / LAND_VY_SCALE);
+        const squashX = 1.0 - Math.min(LAND_SQUASH_MAX_X, landVy / (LAND_VY_SCALE * 1.5));
+        zombie.scaleX = squashX;
+        zombie.scaleY = stretchY;
+
+        // Landing dust — more particles for harder landings
+        const dustCount = Math.min(6, 2 + Math.floor(landVy / 400));
+        emitDust(zombie.x + zombie.width / 2, zombie.y + zombie.height,
+            dustCount, 0, 50 + landVy * 0.05);
+
+        // Screen shake on heavy landings
+        if (landVy > LANDING_SHAKE_MIN_VY) {
+            const shakeIntensity = Math.min(LANDING_SHAKE_INTENSITY, landVy / 300);
+            triggerShake(shakeIntensity, 0.08);
+        }
+    }
+
     zombie.wasGrounded = zombie.grounded;
 
     if (zombie.grounded) {
@@ -1225,6 +1424,16 @@ function updateJump() {
         zombie.coyoteTimer = COYOTE_TIME; // exhaust coyote time to prevent double jump
         zombie.jumpBufferTimer = 0;
         zombie.jumpCut = false; // reset cut flag for new jump
+
+        // Jump launch squash — compress vertically, stretch horizontally.
+        // Must happen on the SAME FRAME as the jump for responsiveness
+        // (Swink: input → feedback latency must be zero).
+        zombie.scaleX = JUMP_SQUASH_X;
+        zombie.scaleY = JUMP_SQUASH_Y;
+
+        // Dust burst at feet
+        emitDust(zombie.x + zombie.width / 2, zombie.y + zombie.height,
+            4, 0, 40);
     }
 
     // Variable jump height: releasing jump early cuts upward velocity (once)
@@ -1235,29 +1444,36 @@ function updateJump() {
 }
 
 // ============================================================
-// INPUT DRIFT
-// At lower sanity tiers, random horizontal impulses simulate
-// the zombie's body fighting the player's intentions. This is
-// the key mechanic for Thrill of Danger (Garneau/Heeter) —
-// the player should feel slightly out of control without
-// feeling cheated.
+// INPUT DRIFT (SMOOTH SYSTEM)
+// Random horizontal impulses simulate the zombie's body fighting
+// the player's intentions. This is the Thrill of Danger mechanic
+// (Garneau/Heeter). Drift impulse and interval interpolate
+// smoothly via getSanityT() — no tier boundaries, no cliffs.
 //
-// Tuned for bigger, rarer impulses (scary events, not constant
-// annoyance). Amplified while airborne so drift is terrifying
-// mid-jump but ignorable on flat ground. Visual flash on drift
-// (Swink: feedback layer) so the player can distinguish "the
-// zombie fought me" from "I made a bad input."
+// Impulse uses a t² curve: gentle at high sanity (barely
+// perceptible nudges), devastating at low sanity (1+ tile shoves).
+//
+// Drift applies as a position nudge + velocity residue instead
+// of pure velocity impulse. This makes BOTH directions visible:
+// same-direction drift causes overshoot (pushed past your target),
+// reverse drift causes undershoot. The speed clamp no longer eats
+// same-direction drift (balance report finding: old system made
+// 50% of drift events invisible).
+//
+// Airborne multiplier makes drift scariest mid-jump. Visual flash
+// + directional shake + vignette scale with impulse strength.
 // ============================================================
 
 function updateDrift(dt) {
-    const tier = getSanityTier(sanity);
-
-    // Tick down drift flash regardless of tier
+    // Tick down drift flash regardless of sanity
     if (drift.flashTimer > 0) drift.flashTimer -= dt;
 
-    if (tier !== 'Slipping' && tier !== 'Feral') {
+    // Drift impulse from smooth curve (t² — gentle start, sharp end)
+    const baseImpulse = getDriftImpulse();
+
+    // Below threshold, drift is imperceptible — skip entirely
+    if (baseImpulse < 5) {
         drift.timer = 0;
-        drift.nextInterval = 1.0;
         return;
     }
 
@@ -1266,33 +1482,258 @@ function updateDrift(dt) {
     if (drift.timer >= drift.nextInterval) {
         drift.timer = 0;
 
-        let minInterval, maxInterval, impulse;
-
-        if (tier === 'Feral') {
-            minInterval = FERAL_DRIFT_MIN_INTERVAL;
-            maxInterval = FERAL_DRIFT_MAX_INTERVAL;
-            impulse = FERAL_DRIFT_IMPULSE;
-        } else {
-            minInterval = SLIPPING_DRIFT_MIN_INTERVAL;
-            maxInterval = SLIPPING_DRIFT_MAX_INTERVAL;
-            impulse = SLIPPING_DRIFT_IMPULSE;
-        }
+        let impulse = baseImpulse;
 
         // Airborne amplification — drift is scariest mid-jump
         if (!zombie.grounded) {
             impulse *= DRIFT_AIRBORNE_MULT;
         }
 
-        // Random next interval
-        drift.nextInterval = minInterval + Math.random() * (maxInterval - minInterval);
+        // Random next interval (±30% around the smooth average)
+        const avgInterval = getDriftInterval();
+        drift.nextInterval = avgInterval * (0.7 + Math.random() * 0.6);
+        drift.nextInterval = Math.max(DRIFT_MIN_INTERVAL, drift.nextInterval);
 
-        // Apply random horizontal impulse
+        // Apply drift: position nudge + velocity residue
         const direction = Math.random() < 0.5 ? -1 : 1;
-        zombie.vx += direction * impulse;
 
-        // Trigger visual flash (0.15s duration)
+        // Position nudge — instant displacement that bypasses speed clamp.
+        // Both directions create observable movement: forward = overshoot,
+        // backward = undershoot. Collision resolved using drift direction
+        // (not zombie.vx, which may point the other way).
+        zombie.x += direction * impulse * DRIFT_NUDGE_SCALE;
+        clampWorldBoundsX();
+
+        // Inline collision resolution for the nudge direction
+        const cTop = Math.floor(zombie.y / TILE_SIZE);
+        const cBot = Math.floor((zombie.y + zombie.height - 1) / TILE_SIZE);
+        if (direction > 0) {
+            const col = Math.floor((zombie.x + zombie.width - 1) / TILE_SIZE);
+            for (let row = cTop; row <= cBot; row++) {
+                if (isSolid(col, row)) {
+                    zombie.x = col * TILE_SIZE - zombie.width;
+                    break;
+                }
+            }
+        } else {
+            const col = Math.floor(zombie.x / TILE_SIZE);
+            for (let row = cTop; row <= cBot; row++) {
+                if (isSolid(col, row)) {
+                    zombie.x = (col + 1) * TILE_SIZE;
+                    break;
+                }
+            }
+        }
+
+        // Velocity residue — small momentum change for physical feel.
+        // Gets corrected by acceleration/friction over the next few frames.
+        zombie.vx += direction * impulse * DRIFT_VELOCITY_RESIDUE;
+
+        // Visual feedback — all scale with impulse strength
         drift.flashTimer = 0.15;
+        drift.flashDirection = direction;
+        drift.lastImpulse = impulse;
+
+        // Directional screen shake scales with impulse
+        const shakeIntensity = Math.min(4, impulse / 100);
+        if (shakeIntensity > 0.5) {
+            triggerShake(shakeIntensity, 0.08, direction);
+        }
     }
+}
+
+// ============================================================
+// JUICE SYSTEMS
+// Squash/stretch, particles, screen shake, and vignette. These
+// close Swink's simulation → feedback loop. Without them, the
+// movement system is mechanically correct but feels "dead."
+//
+// Architecture note: these are intentionally simple. A particle
+// is 9 floats. Screen shake is a decaying offset. Squash/stretch
+// is a lerp toward 1.0. No abstractions beyond what's needed —
+// this is a toy, not an engine (Nystrom: YAGNI).
+// ============================================================
+
+/** Emit dust particles at a position. spreadX biases horizontal scatter. */
+function emitDust(x, y, count, biasX, spread) {
+    for (let i = 0; i < count; i++) {
+        particles.push({
+            x: x + (Math.random() - 0.5) * 10,
+            y: y - 2,
+            vx: biasX + (Math.random() - 0.5) * spread * 2,
+            vy: -(20 + Math.random() * 40),
+            life: 0.2 + Math.random() * 0.15,
+            maxLife: 0.35,
+            size: 3 + Math.random() * 3,
+            color: '#999',
+        });
+    }
+}
+
+/** Trigger screen shake with intensity (pixels) and duration (seconds).
+ *  Optional dirX biases shake toward a direction (-1 left, 1 right, 0 neutral). */
+function triggerShake(intensity, duration, dirX) {
+    // Use the stronger shake if multiple fire in the same window
+    // (stacking with dampening, per Vlambeer's guidelines).
+    // Directional bias follows the winning intensity.
+    if (intensity > camera.shakeIntensity) {
+        camera.shakeIntensity = intensity;
+        camera.shakeBiasX = dirX || 0;
+    }
+    camera.shakeDuration = Math.max(camera.shakeDuration, duration);
+    camera.shakeTimer = 0;
+}
+
+/** Update all juice systems each frame. */
+function updateJuice(dt) {
+    // --- Squash/stretch lerp toward 1.0 ---
+    // Exponential approach: fast snap-back that settles smoothly.
+    const lerpSpeed = SCALE_LERP_RATE * dt;
+    zombie.scaleX += (1.0 - zombie.scaleX) * Math.min(1, lerpSpeed);
+    zombie.scaleY += (1.0 - zombie.scaleY) * Math.min(1, lerpSpeed);
+
+    // Clamp near 1.0 to avoid perpetual micro-oscillation
+    if (Math.abs(zombie.scaleX - 1.0) < 0.005) zombie.scaleX = 1.0;
+    if (Math.abs(zombie.scaleY - 1.0) < 0.005) zombie.scaleY = 1.0;
+
+    // --- Particles ---
+    for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.vy += PARTICLE_GRAVITY * dt;
+        p.life -= dt;
+        if (p.life <= 0) {
+            particles.splice(i, 1);
+        }
+    }
+
+    // --- Screen shake decay ---
+    if (camera.shakeDuration > 0) {
+        camera.shakeTimer += dt;
+        if (camera.shakeTimer >= camera.shakeDuration) {
+            camera.shakeDuration = 0;
+            camera.shakeTimer = 0;
+            camera.shakeIntensity = 0;
+            camera.shakeBiasX = 0;
+            camera.shakeX = 0;
+            camera.shakeY = 0;
+        } else {
+            // Exponential decay: starts strong, fades out
+            const progress = camera.shakeTimer / camera.shakeDuration;
+            const decayedIntensity = camera.shakeIntensity * (1 - progress);
+            // Random component + directional bias. Bias adds a constant
+            // pull toward the drift direction so the world "lurches."
+            camera.shakeX = (Math.random() - 0.5) * 2 * decayedIntensity
+                + camera.shakeBiasX * decayedIntensity;
+            camera.shakeY = (Math.random() - 0.5) * 2 * decayedIntensity;
+        }
+    }
+}
+
+/** Draw all active particles. Called during render. */
+function renderParticles() {
+    for (const p of particles) {
+        const alpha = Math.max(0, p.life / p.maxLife);
+        ctx.globalAlpha = alpha * 0.7;
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size * alpha, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    ctx.globalAlpha = 1.0;
+}
+
+/** Draw speed lines behind the zombie when moving fast.
+ *  Lines trail opposite to movement direction. Count and opacity
+ *  ramp up as speed approaches max. Shimmer per frame via random
+ *  y-offsets communicates sustained velocity (Celeste-style). */
+function renderSpeedLines() {
+    const speed = Math.abs(zombie.vx);
+    const maxSpeed = getMaxSpeed();
+    const threshold = maxSpeed * SPEED_LINE_THRESHOLD;
+    if (speed < threshold || threshold >= maxSpeed) return;
+
+    // 0→1 ramp from threshold to max speed
+    const intensity = Math.min(1, (speed - threshold) / (maxSpeed - threshold));
+    const tier = getSanityTier(sanity);
+    const color = getTierColor(tier);
+    const dir = zombie.vx > 0 ? -1 : 1; // trail opposite to movement
+    const startX = dir > 0 ? zombie.x + zombie.width : zombie.x;
+    const lineCount = intensity > 0.5 ? 2 : 1;
+
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1;
+
+    for (let i = 0; i < lineCount; i++) {
+        const yOffset = (i === 0 ? -1 : 1) * (5 + Math.random() * 10);
+        const lineY = zombie.y + zombie.height / 2 + yOffset;
+        const lineLen = 15 + Math.random() * 15;
+
+        ctx.globalAlpha = SPEED_LINE_OPACITY * intensity * (0.6 + Math.random() * 0.4);
+        ctx.beginPath();
+        ctx.moveTo(startX, lineY);
+        ctx.lineTo(startX + dir * lineLen, lineY);
+        ctx.stroke();
+    }
+    ctx.globalAlpha = 1.0;
+}
+
+/** Draw sanity vignette overlay. Intensity scales with getSanityT(). */
+function renderVignette() {
+    const t = getSanityT();
+    if (t < 0.05) return; // no vignette at high sanity
+
+    const w = canvas.width;
+    const h = canvas.height;
+    const cx = w / 2;
+    const cy = h / 2;
+    const radius = Math.max(w, h) * 0.7;
+
+    // Radial gradient: transparent center, tier-colored edges
+    const tier = getSanityTier(sanity);
+    const color = getTierColor(tier);
+
+    const gradient = ctx.createRadialGradient(cx, cy, radius * 0.3, cx, cy, radius);
+    gradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
+    gradient.addColorStop(1, color);
+
+    ctx.globalAlpha = t * VIGNETTE_MAX_OPACITY;
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, w, h);
+    ctx.globalAlpha = 1.0;
+}
+
+/** Draw a one-sided vignette flash when drift fires.
+ *  Flashes on the side the drift pushed TOWARD so the player
+ *  can feel the direction of the interference. Screen-space.
+ *  Opacity scales with impulse strength — invisible at high sanity,
+ *  dramatic at low sanity. */
+function renderDriftVignette() {
+    if (drift.flashTimer <= 0 || drift.flashDirection === 0) return;
+    if (drift.lastImpulse < 50) return; // too weak for vignette
+
+    const w = canvas.width;
+    const h = canvas.height;
+    const dir = drift.flashDirection;
+
+    // Opacity scales with impulse strength and flash timer
+    const impulseAlpha = Math.min(1, drift.lastImpulse / 300);
+    const alpha = (drift.flashTimer / 0.15) * 0.2 * impulseAlpha;
+
+    // Linear gradient from drift-direction edge toward center
+    const tier = getSanityTier(sanity);
+    const gradient = ctx.createLinearGradient(
+        dir > 0 ? w : 0, 0,
+        w * 0.5, 0
+    );
+    gradient.addColorStop(0, getTierColor(tier));
+    gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, w, h);
+    ctx.globalAlpha = 1.0;
 }
 
 // ============================================================
@@ -1314,6 +1755,12 @@ resizeCanvas();
 function render() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+    // --- Apply screen shake offset ---
+    // All rendering is offset by the shake. Save/restore ensures
+    // UI elements (drawn outside render()) are not affected.
+    ctx.save();
+    ctx.translate(camera.shakeX, camera.shakeY);
+
     // --- Draw tiles ---
     for (let row = 0; row < MAP_ROWS; row++) {
         for (let col = 0; col < MAP_COLS; col++) {
@@ -1328,7 +1775,13 @@ function render() {
         }
     }
 
-    // --- Draw zombie ---
+    // --- Draw particles (behind zombie) ---
+    renderParticles();
+
+    // --- Speed lines (behind zombie, only at high speed) ---
+    renderSpeedLines();
+
+    // --- Draw zombie with squash/stretch ---
     const tier = getSanityTier(sanity);
     let zombieColor = getTierColor(tier);
 
@@ -1341,8 +1794,40 @@ function render() {
         zombieColor = `rgba(255, 255, 255, ${0.3 + 0.7 * flashIntensity})`;
     }
 
+    // --- Feral input delay: "body resists" visual ---
+    // Jitter ±1px and darken 20% so the 30ms delay reads as a
+    // game mechanic ("zombie fought me") not input lag.
+    let jitterX = 0, jitterY = 0;
+    const resisting = drift.inputDelayTimer > 0;
+    if (resisting) {
+        jitterX = (Math.random() - 0.5) * 2;
+        jitterY = (Math.random() - 0.5) * 2;
+    }
+
+    // Squash/stretch rendering: scale around the zombie's bottom-center
+    // so the feet stay planted on the ground. Without this anchor,
+    // squash on landing would push the zombie into the floor.
+    const zCenterX = zombie.x + zombie.width / 2;
+    const zBottomY = zombie.y + zombie.height;
+
+    ctx.save();
+    ctx.translate(zCenterX, zBottomY);
+    ctx.scale(zombie.scaleX, zombie.scaleY);
+    ctx.translate(-zCenterX, -zBottomY);
+
+    // Apply jitter inside squash/stretch transform
+    if (jitterX !== 0 || jitterY !== 0) {
+        ctx.translate(jitterX, jitterY);
+    }
+
     ctx.fillStyle = zombieColor;
     ctx.fillRect(zombie.x, zombie.y, zombie.width, zombie.height);
+
+    // Darken overlay when body is resisting direction change
+    if (resisting) {
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+        ctx.fillRect(zombie.x, zombie.y, zombie.width, zombie.height);
+    }
 
     // Draw the tier color as an outline during flash so the zombie
     // doesn't become invisible — the flash overlays, not replaces
@@ -1359,6 +1844,8 @@ function render() {
     ctx.textBaseline = 'middle';
     ctx.fillText('Z', zombie.x + zombie.width / 2, zombie.y + zombie.height / 2);
 
+    ctx.restore(); // end squash/stretch transform
+
     // --- Draw direction indicator (small arrow showing velocity) ---
     if (Math.abs(zombie.vx) > 10) {
         const arrowX = zombie.vx > 0
@@ -1370,6 +1857,17 @@ function render() {
         ctx.textAlign = 'center';
         ctx.fillText(arrowDir, arrowX, zombie.y + zombie.height / 2);
     }
+
+    ctx.restore(); // end screen shake transform
+
+    // --- Sanity vignette (drawn over everything, screen-space) ---
+    // Drawn AFTER restoring shake transform so the vignette stays
+    // fixed on screen — the world shakes, the vignette doesn't.
+    renderVignette();
+
+    // --- Feral drift directional vignette (screen-space) ---
+    // Brief flash on the side the drift pushed toward.
+    renderDriftVignette();
 }
 
 // ============================================================
@@ -1391,13 +1889,15 @@ function updateDebugPanel() {
         `Coyote: ${zombie.coyoteTimer.toFixed(2)}`,
         `Jump Buffer: ${zombie.jumpBufferTimer.toFixed(2)}`,
         `Air Control: ${getAirControl().toFixed(2)}`,
+        `Drift Impulse: ${getDriftImpulse().toFixed(0)}`,
+        `Drift Interval: ${getDriftInterval().toFixed(1)}s`,
         `Drift Timer: ${drift.timer.toFixed(2)}`,
-        `Drift Next: ${drift.nextInterval.toFixed(2)}`,
+        `Input Delay Max: ${(getInputDelay() * 1000).toFixed(0)}ms`,
         `Jump Vel: ${getJumpVelocity().toFixed(0)}`,
         `Decel: ${getDeceleration().toFixed(0)}`,
     ];
 
-    if (tier === 'Feral' && drift.inputDelayTimer > 0) {
+    if (drift.inputDelayTimer > 0) {
         lines.push(`Input Delay: ${drift.inputDelayTimer.toFixed(3)}`);
     }
 
@@ -1473,11 +1973,26 @@ const tuningParams = [
     { label: 'Decel ×', key: 'FERAL_DECEL_MULT', min: 0.1, max: 1.0, step: 0.05 },
     { label: 'Gravity ×', key: 'FERAL_GRAVITY_MULT', min: 1.0, max: 2.0, step: 0.05 },
 
-    { section: 'Drift' },
-    { label: 'Slip Impulse', key: 'SLIPPING_DRIFT_IMPULSE', min: 10, max: 300, step: 10 },
-    { label: 'Feral Impulse', key: 'FERAL_DRIFT_IMPULSE', min: 50, max: 500, step: 10 },
+    { section: 'Drift (Smooth)' },
+    { label: 'Base Impulse', key: 'DRIFT_BASE_IMPULSE', min: 100, max: 800, step: 25 },
+    { label: 'Impulse Exp', key: 'DRIFT_IMPULSE_EXPONENT', min: 1.0, max: 3.0, step: 0.25 },
+    { label: 'Min Interval', key: 'DRIFT_MIN_INTERVAL', min: 0.3, max: 2.0, step: 0.1 },
+    { label: 'Max Interval', key: 'DRIFT_MAX_INTERVAL', min: 2.0, max: 10.0, step: 0.5 },
     { label: 'Airborne ×', key: 'DRIFT_AIRBORNE_MULT', min: 1.0, max: 4.0, step: 0.25 },
-    { label: 'Feral Delay', key: 'FERAL_INPUT_DELAY', min: 0, max: 0.2, step: 0.01 },
+    { label: 'Nudge Scale', key: 'DRIFT_NUDGE_SCALE', min: 0.02, max: 0.2, step: 0.01 },
+    { label: 'Vel Residue', key: 'DRIFT_VELOCITY_RESIDUE', min: 0.0, max: 0.6, step: 0.05 },
+    { label: 'Max Delay', key: 'FERAL_INPUT_DELAY', min: 0, max: 0.1, step: 0.005 },
+    { label: 'Delay Onset', key: 'INPUT_DELAY_ONSET_T', min: 0.2, max: 0.8, step: 0.05 },
+
+    { section: 'Juice' },
+    { label: 'Scale Lerp', key: 'SCALE_LERP_RATE', min: 4, max: 25, step: 1 },
+    { label: 'Jump Sqsh X', key: 'JUMP_SQUASH_X', min: 1.0, max: 1.4, step: 0.05 },
+    { label: 'Jump Sqsh Y', key: 'JUMP_SQUASH_Y', min: 0.6, max: 1.0, step: 0.05 },
+    { label: 'Land Str Y', key: 'LAND_STRETCH_MAX_Y', min: 0.05, max: 0.4, step: 0.05 },
+    { label: 'Land Shake', key: 'LANDING_SHAKE_INTENSITY', min: 1, max: 8, step: 1 },
+    { label: 'Vignette', key: 'VIGNETTE_MAX_OPACITY', min: 0, max: 0.5, step: 0.05 },
+    { label: 'Spd Thresh', key: 'SPEED_LINE_THRESHOLD', min: 0.5, max: 1.0, step: 0.05 },
+    { label: 'Spd Opacity', key: 'SPEED_LINE_OPACITY', min: 0, max: 0.6, step: 0.05 },
 ];
 
 // We store references to the global variables via eval for live read/write.
@@ -1527,6 +2042,13 @@ function buildTuningPanel() {
         <label><span>Seed</span>
             <input type="number" id="gen-seed" value="42" class="gen-seed-input">
         </label>
+        <label style="cursor:pointer"><span>Pacing</span>
+            <input type="checkbox" id="gen-pacing" ${PACING_ENABLED ? 'checked' : ''} style="width:auto;margin-left:8px">
+        </label>
+        <label><span>Diff Scale</span>
+            <input type="range" id="gen-diff-scale" min="0.5" max="1.5" step="0.1" value="${PACING_DIFFICULTY_SCALE}">
+            <span id="gen-diff-scale-val" style="min-width:45px;text-align:right">${PACING_DIFFICULTY_SCALE.toFixed(1)}</span>
+        </label>
         <div class="gen-button-row">
             <button onclick="doGenerate()">Generate</button>
             <button onclick="doRandomGenerate()">Random</button>
@@ -1564,6 +2086,13 @@ function buildTuningPanel() {
     document.getElementById('gen-sanity').addEventListener('input', function() {
         document.getElementById('gen-sanity-val').textContent = this.value;
     });
+    document.getElementById('gen-pacing').addEventListener('change', function() {
+        PACING_ENABLED = this.checked;
+    });
+    document.getElementById('gen-diff-scale').addEventListener('input', function() {
+        PACING_DIFFICULTY_SCALE = parseFloat(this.value);
+        document.getElementById('gen-diff-scale-val').textContent = PACING_DIFFICULTY_SCALE.toFixed(1);
+    });
 }
 
 // ============================================================
@@ -1588,6 +2117,7 @@ function gameLoop(currentTime) {
         processInput();
         updatePhysics(dt);
         updateDrift(dt);
+        updateJuice(dt);
         render();
         updateDebugPanel();
         updateSanityUI();

@@ -1,6 +1,6 @@
 # Zombie Movement Toy — Current State
 
-**Version:** Playtest tuning pass
+**Version:** Step 1.3 complete (pacing upgrade)
 **Last updated:** Feb 2026
 
 ## Overview
@@ -24,22 +24,25 @@ Single-file HTML/JS movement prototype (`index.html`). Opens directly in any mod
 - Supports Space, W, and ArrowUp
 
 ### Sanity Tier System
-Sanity 0-12, controlled by slider. Tiers determine drift behavior; all other movement parameters interpolate smoothly across the full range (no tier stepping).
+Sanity 0-12, controlled by slider. Tiers are cosmetic labels; ALL movement and drift parameters interpolate smoothly across the full range (no tier stepping).
 
-| Tier | Range | Drift Effects |
-|------|-------|---------------|
-| Lucid | 7-12 | No drift |
-| Slipping | 4-6.99 | Subtle drift (±100 px/s every 1.0-2.5s) |
-| Feral | 0.01-3.99 | Heavy drift (±500 px/s every 0.8-1.8s) + 0.03s direction reversal delay |
+| Tier | Range | Label Only |
+|------|-------|------------|
+| Lucid | 7-12 | Green tint |
+| Slipping | 4-6.99 | Yellow tint |
+| Feral | 0.01-3.99 | Orange/red tint |
 | Gone | 0 | No movement, "MIND LOST" overlay |
 
-### Input Drift
-Tuned for bigger, rarer impulses (scary events, not constant annoyance). Amplified while airborne so drift is terrifying mid-jump but ignorable on flat ground. Visual flash on drift fire so the player can distinguish "drift pushed me" from "I messed up."
+### Input Drift (Smooth System)
+Drift impulse and interval interpolate smoothly via `getSanityT()` with a t² curve — gentle at high sanity, devastating at low sanity. This replaces the old tier-based system that had a "Lucid free zone" (sanity 7-12 = zero cost) and a "Feral cliff" (28× cost increase at the 4→3.99 boundary).
 
-- Slipping: random ±100 px/s impulse every 1.0-2.5s
-- Feral: random ±500 px/s impulse every 0.8-1.8s + 0.03s direction reversal delay
-- Airborne multiplier: 2x impulse while not grounded
-- Visual feedback: zombie flashes white briefly when drift fires
+- **Impulse**: `DRIFT_BASE_IMPULSE * t²` — ranges from ~1 px/s at sanity 11 to 500 px/s at sanity 0
+- **Interval**: linear from 5.0s at sanity 12 to 0.8s at sanity 0
+- **Position nudge**: instant displacement (`impulse * DRIFT_NUDGE_SCALE`) that bypasses speed clamp, making both same-direction and reverse drift visible
+- **Velocity residue**: small momentum change (`impulse * DRIFT_VELOCITY_RESIDUE`) for physical feel
+- **Airborne multiplier**: 2x impulse while not grounded (drift is scariest mid-jump)
+- **Visual feedback**: zombie flashes white, directional vignette, impulse-scaled screen shake
+- **Input delay**: smooth onset starting at sanity 6, scaling to 0.03s at sanity 0 (was Feral-only)
 
 ### Collision Detection
 - AABB vs tile grid
@@ -51,24 +54,44 @@ Tuned for bigger, rarer impulses (scary events, not constant annoyance). Amplifi
 Procedural physics-aware platform generation in the tuning panel. Calculates jump envelope from actual physics constants (JUMP_VELOCITY, GRAVITY, FERAL_JUMP_MULT) to place platforms that are reachable at the specified minimum sanity level.
 
 - **Seeded PRNG** (splitmix32): reproducible layouts from seed
-- **Section-based terrain**: 3-5 sections per level, each a random archetype (no back-to-back repeats, at least one tower or canyon guaranteed):
+- **Pacing-aware sequencer** (Schell interest curve): sections follow a beat pattern based on section count:
+  - 3 sections: hook(0.5) → climax(0.9) → resolution(0.3)
+  - 4 sections: hook(0.5) → rising(0.6) → climax(0.9) → resolution(0.3)
+  - 5 sections: hook(0.5) → rising(0.65) → valley(0.25) → climax(0.9) → resolution(0.3)
+- **Weighted archetype selection**: each beat has preferred archetypes (hook/climax favor canyon/tower, valley/resolution favor open/corridor)
+- **Difficulty modulation**: each archetype adjusts parameters based on beat difficulty (gap widths, platform sizes, ceiling height, ground coverage, step rise/run)
+- **Transition zones**: 3-tile ground at section boundaries + perch platform when difficulty delta > 0.3
+- **Pacing toggle**: `PACING_ENABLED` flag preserves old random behavior when disabled
+- **Difficulty scale**: `PACING_DIFFICULTY_SCALE` (0.5-1.5) multiplies beat difficulties for easier/harder levels
+- **Section-based terrain**: 3-5 sections per level, each an archetype (5 types):
   - **Canyon** — ground gap with bridge platform above, upper reward platform
   - **Tower** — vertical stack of alternating offset platforms, side approach
   - **Open** — partial ground with gaps/raised bumps, scattered platforms at various heights
   - **Corridor** — low ceiling with gaps, cramped lower path vs risk/reward upper path
   - **Staircase** — ascending or descending chain of step platforms
 - **Platform personality**: mixed sizes (25% tiny 1-2 tiles, 30% medium 3-4, 45% wide 5-7+)
-- **Ground variation**: per-section ground treatment (gaps, partial, raised), section boundaries get 2-tile ground for walkability
+- **Ground variation**: per-section ground treatment (gaps, partial, raised), transition zones at boundaries
 - **Landmarks**: 1-2 per level (tall pillars, single floating tiles, overhangs)
 - **BFS reachability validation**: removes any platform unreachable via the physics envelope
 - **Gauntlet preset**: one-click restore of the hardcoded Sanity Gauntlet map
 
-Generator UI sliders: Width (20-60), Height (15-35), Density (0.1-0.9), Min Sanity (1-12), Seed
+Generator UI: Width (20-60), Height (15-35), Density (0.1-0.9), Min Sanity (1-12), Seed, Pacing toggle, Difficulty Scale (0.5-1.5)
+
+### Juice / Feedback Systems (Phase A)
+Four feedback systems that close Swink's simulation → feedback loop. Without these, movement is mechanically correct but feels "dead."
+
+- **Squash/stretch**: Zombie scales on jump launch (1.15x wide, 0.80x tall), landing (scales with fall velocity), and high-speed direction reversal (0.90x compress). Anchored at bottom-center so feet stay planted. Lerps back to 1.0 via exponential approach (SCALE_LERP_RATE).
+- **Dust particles**: Emitted on jump, landing, and direction reversal. Count/spread scale with intensity. Gravity-affected, alpha-fading, size-decaying. Flat array, < 30 particles at any time.
+- **Screen shake**: Camera offset with exponential decay. Triggered on heavy landings (vy > 400 px/s) and Feral drift impulses. Stacking uses the stronger intensity (Vlambeer's dampened stacking). Feral drift shake is **directional** — biased toward the drift direction so the world lurches.
+- **Sanity vignette**: Radial gradient overlay that intensifies as sanity drops. Tier-colored edges, transparent center. Drawn in screen-space (not affected by shake). Max opacity 0.25 at sanity 0.
+- **Input delay visual**: During the direction reversal block, zombie darkens 20% and jitters ±1px per frame. Now triggers at any sanity where delay > 0 (from sanity 6 down). Communicates "body is fighting you" instead of feeling like input lag.
+- **Drift directional vignette**: One-sided tier-colored flash on the side drift pushed toward. Fades over 0.15s. Opacity scales with impulse strength (skips if < 50 px/s). Communicates drift direction to the player.
+- **Speed lines** (Phase C): 1-2 faint horizontal lines trail behind the zombie when |vx| > 80% of max speed. Tier-colored, opacity and count ramp with speed. Shimmer per frame via random y-offsets. Drawn behind zombie, inside shake transform.
 
 ### UI
 - **Sanity slider**: top bar, range 0-12, real-time, shows value + tier name
 - **Debug panel**: top-right overlay, monospace, shows velocity/grounded/coyote/buffer/air control/drift
-- **Tuning panel**: collapsible left panel with sliders for all movement constants + level generator controls
+- **Tuning panel**: collapsible left panel with sliders for all movement constants + juice params + level generator controls
 - **Gone overlay**: "MIND LOST" text when sanity = 0
 - **Controls hint**: bottom text showing key bindings
 
@@ -118,9 +141,31 @@ Tier layout:
 | FERAL_JUMP_MULT | 1.6 | multiplier (sanity-interpolated) |
 | FERAL_DECEL_MULT | 0.5 | multiplier (sanity-interpolated) |
 | FERAL_GRAVITY_MULT | 1.15 | multiplier (sanity-interpolated) |
-| SLIPPING_DRIFT_IMPULSE | 100 | px/s |
-| FERAL_DRIFT_IMPULSE | 500 | px/s |
+| DRIFT_BASE_IMPULSE | 500 | px/s equivalent (max at sanity 0) |
+| DRIFT_MIN_INTERVAL | 0.8 | seconds (shortest, at sanity 0) |
+| DRIFT_MAX_INTERVAL | 5.0 | seconds (longest, at sanity 12) |
+| DRIFT_IMPULSE_EXPONENT | 2 | curve shape (t² = gentle start) |
 | DRIFT_AIRBORNE_MULT | 2.0 | multiplier (while not grounded) |
+| DRIFT_NUDGE_SCALE | 0.1 | px per px/s of impulse |
+| DRIFT_VELOCITY_RESIDUE | 0.3 | fraction of impulse as velocity |
+| FERAL_INPUT_DELAY | 0.03 | seconds (max at sanity 0) |
+| INPUT_DELAY_ONSET_T | 0.5 | getSanityT() threshold (sanity 6) |
+| SCALE_LERP_RATE | 12 | per second (squash/stretch return speed) |
+| JUMP_SQUASH_X | 1.15 | multiplier (horizontal stretch on jump) |
+| JUMP_SQUASH_Y | 0.80 | multiplier (vertical compress on jump) |
+| LAND_STRETCH_MAX_Y | 0.20 | added to 1.0 on landing |
+| LAND_SQUASH_MAX_X | 0.12 | subtracted from 1.0 on landing |
+| LAND_VY_SCALE | 3000 | vy divisor for landing intensity |
+| LANDING_SHAKE_MIN_VY | 400 | px/s (min vy to trigger landing shake) |
+| LANDING_SHAKE_INTENSITY | 4 | pixels (max shake for heaviest landing) |
+| REVERSAL_SQUASH_X | 0.90 | multiplier (compress on direction reversal) |
+| REVERSAL_MIN_SPEED | 200 | px/s (min speed before reversal for juice) |
+| PARTICLE_GRAVITY | 100 | px/s² (downward on dust particles) |
+| VIGNETTE_MAX_OPACITY | 0.25 | max vignette opacity at sanity 0 |
+| SPEED_LINE_THRESHOLD | 0.8 | fraction of max speed to show lines |
+| SPEED_LINE_OPACITY | 0.3 | max opacity of speed lines |
+| PACING_ENABLED | true | toggle (pacing vs random) |
+| PACING_DIFFICULTY_SCALE | 1.0 | multiplier (0.5-1.5) |
 | MAP_COLS | 40 (default) | tiles (mutable, 20-60) |
 | MAP_ROWS | 25 (default) | tiles (mutable, 15-35) |
 

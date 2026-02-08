@@ -1,6 +1,6 @@
 # Zombie Movement Toy — Architecture
 
-**Last updated:** Feb 2026 — Playtest tuning pass
+**Last updated:** Feb 2026 — Level generator pacing upgrade
 
 ## Design Philosophy
 
@@ -22,13 +22,14 @@ Everything lives in `index.html`. The code is organized into clearly separated s
 8. **Physics Update** — Core movement loop (gravity, accel, friction, clamp, position)
 9. **Collision Detection** — AABB vs tile grid (X-first resolution)
 10. **Jump System** — Coyote time, jump buffer, variable height
-11. **Input Drift** — Random impulses at Slipping/Feral tiers
-12. **Rendering** — Canvas drawing (tiles, zombie, direction indicator)
-13. **UI — Debug Panel** — Real-time movement diagnostics
-14. **UI — Sanity Slider** — Primary testing tool
-15. **UI — Tuning Panel** — Live constant adjustment + level generator controls
-16. **Game Loop** — requestAnimationFrame with dt capping
-17. **Initialization** — Setup and loop start
+11. **Input Drift** — Smooth impulses via t² curve (position nudge + velocity residue)
+12. **Juice Systems** — Squash/stretch, particles, screen shake, vignette
+13. **Rendering** — Canvas drawing (tiles, zombie with squash/stretch, particles, vignette)
+14. **UI — Debug Panel** — Real-time movement diagnostics
+15. **UI — Sanity Slider** — Primary testing tool
+16. **UI — Tuning Panel** — Live constant adjustment + juice params + level generator controls
+17. **Game Loop** — requestAnimationFrame with dt capping
+18. **Initialization** — Setup and loop start
 
 ## Key Architecture Decisions
 
@@ -52,7 +53,7 @@ The tuning panel uses `eval()` to read/write global variables by name. This is a
 Frame-rate independent via `dt` multiplication everywhere. The update order is:
 
 ```
-gravity → input acceleration → friction → speed clamp → X move + X collision → Y move + Y collision → jump timers → jump execution
+processInput → gravity → input acceleration → friction → speed clamp → X move + X collision → Y move + Y collision → reversal juice → jump timers (landing juice) → jump execution (jump juice) → drift (Feral shake) → juice update (lerp, particles, shake decay) → render (shake → tiles → particles → zombie squash/stretch → arrow → restore → vignette)
 ```
 
 This order ensures:
@@ -62,15 +63,32 @@ This order ensures:
 - Jump timers update after collision (so grounded state is fresh)
 - Jump execution is last (so the zombie can jump the same frame they land)
 
-## Drift Model
+## Drift Model (Smooth System)
 
-Input drift applies random horizontal velocity impulses on a timer. The timer resets to a random interval within the tier's range after each impulse. Tuned for **bigger, rarer** impulses so each drift event is a noticeable "oh shit" moment rather than constant low-grade annoyance (playtest finding: frequent small impulses felt like a broken controller, not a scary loss of control).
+Drift uses a **smooth curve** rather than tier-based constants. The balance report (docs/SANITY_BALANCE_REPORT.md) identified four problems with the old tier system: a "Lucid free zone" (sanity 7-12 = zero drift cost), negligible Slipping drift, a "Feral cliff" (28× cost increase at the tier boundary), and invisible same-direction drift (speed clamp eats pure velocity impulses).
 
-**Airborne amplification:** Drift impulse is multiplied by `DRIFT_AIRBORNE_MULT` (2.0) while the zombie is not grounded. This makes drift terrifying during jumps (where it can kill you) and ignorable on flat ground (where it just nudges you). The asymmetry is the key insight — drift should be scary *when it matters*, not constantly irritating.
+### Impulse curve
+`getDriftImpulse()` returns `DRIFT_BASE_IMPULSE * t²` where t = `getSanityT()`. The squared exponent means drift starts very gently at high sanity (~1 px/s at sanity 11) and accelerates into devastating at low sanity (500 px/s at sanity 0). Below 5 px/s, drift is skipped entirely.
 
-**Visual feedback:** When drift fires, `drift.flashTimer` is set to 0.15s. The renderer draws the zombie as a white flash that fades over that duration, with a tier-colored outline to maintain visibility. This closes Swink's feedback loop — the player can distinguish "the zombie fought me" from "I made a bad input."
+### Interval
+`getDriftInterval()` returns a linear interpolation from `DRIFT_MAX_INTERVAL` (5.0s) at sanity 12 to `DRIFT_MIN_INTERVAL` (0.8s) at sanity 0. The actual interval has ±30% random variance around this value.
 
-Feral tier additionally has an **input delay** on direction reversals: if the zombie is moving right and the player presses left, there's a 0.03s window where the left input is ignored. This simulates the zombie's body resisting direction changes — momentum commits you.
+### Position nudge + velocity residue
+The old system applied drift as a pure velocity impulse. Same-direction drift was invisible because the speed clamp fired before the next movement frame. The new system uses two channels:
+1. **Position nudge**: `zombie.x += direction * impulse * DRIFT_NUDGE_SCALE` — instant displacement that bypasses speed clamp. Both directions create observable movement.
+2. **Velocity residue**: `zombie.vx += direction * impulse * DRIFT_VELOCITY_RESIDUE` — small momentum change for physical feel, corrected by acceleration/friction over subsequent frames.
+
+### Drift collision resolution
+Position nudge can push the zombie into walls. Collision is resolved **inline** using the drift direction (not `zombie.vx`, which may point the other way). This avoids the `resolveHorizontal()` function, which uses `zombie.vx` for direction and would check the wrong side for counter-direction nudges.
+
+### Airborne amplification
+Drift impulse is multiplied by `DRIFT_AIRBORNE_MULT` (2.0) while the zombie is not grounded. This makes drift terrifying during jumps (where it can kill you) and ignorable on flat ground (where it just nudges you).
+
+### Visual feedback
+When drift fires, `drift.flashTimer` is set to 0.15s. The renderer draws the zombie as a white flash that fades over that duration, with a tier-colored outline to maintain visibility. Screen shake scales with impulse magnitude (`min(4, impulse / 100)`). Directional vignette opacity scales with `drift.lastImpulse / 300`.
+
+### Smooth input delay
+Direction reversal delay now uses `getInputDelay()` which returns 0 above `INPUT_DELAY_ONSET_T` (sanity 6) and scales smoothly to `FERAL_INPUT_DELAY` (0.03s) at sanity 0. This replaces the old Feral-only hard gate. The visual (darken + jitter) triggers whenever `drift.inputDelayTimer > 0`, regardless of tier.
 
 ## Sanity Sliding Scales
 
@@ -99,8 +117,18 @@ Row 21 includes a 10-tile horizontal gap that Lucid max range (~8 tiles) cannot 
 ### Physics envelope calculation
 `calcJumpEnvelope(sanity)` derives reachable tile distances directly from the game's physics constants using kinematics: peak height = v²/(2g), horizontal range = maxSpeed × timeToPeak. All three values (jump velocity, gravity, max speed) use the same smooth sanity interpolation as the runtime helpers. This ensures generated platforms are reachable at the specified minimum sanity level without hardcoded tile-step values.
 
+### Pacing-aware sequencer
+When `PACING_ENABLED` is true, the generator follows Schell's interest curve instead of random archetype selection. `PACING_BEATS` maps section count (3/4/5) to beat sequences (hook, rising, valley, climax, resolution), each with a difficulty value 0-1. `BEAT_ARCHETYPE_WEIGHTS` defines weighted preferences per beat — hooks and climaxes favor canyon/tower (visually striking, challenging), valleys and resolutions favor open/corridor (restful). `selectArchetype()` performs weighted random selection with no back-to-back repeats.
+
+Each archetype's `generateSection()` accepts a `difficulty` parameter that modulates its structural parameters: canyon gap widths and bridge heights scale up; tower step heights increase and platform widths decrease; open ground coverage probability drops from 75% to 43%; corridor ceilings lower and gaps reduce; staircase rise/run increase and platforms narrow. `PACING_DIFFICULTY_SCALE` (0.5-1.5) multiplies all beat difficulties, clamped to 1.0.
+
+When `PACING_ENABLED` is false, the old random selection with tower/canyon guarantee is preserved exactly.
+
+### Transition zones
+`applyTransitionZone()` replaces the old 2-tile ground continuity at section boundaries. It places 3 tiles of ground at each boundary. When the difficulty delta between adjacent sections exceeds 0.3, it also places a perch platform 3 tiles above ground to help players prepare for the difficulty shift.
+
 ### Section-based terrain
-Levels are divided into 3-5 sections, each randomly assigned one of five archetypes: **canyon** (ground gap + bridge), **tower** (vertical stack), **open** (scattered platforms), **corridor** (low ceiling), **staircase** (ascending/descending chain). No back-to-back repeats, and at least one tower or canyon is guaranteed. Each section gets its own ground treatment (gaps, raised bumps, partial coverage). Section boundaries always have 2 tiles of ground on each side for walkability.
+Levels are divided into 3-5 sections, each assigned one of five archetypes: **canyon** (ground gap + bridge), **tower** (vertical stack), **open** (scattered platforms), **corridor** (low ceiling), **staircase** (ascending/descending chain). Each section gets its own ground treatment (gaps, raised bumps, partial coverage) modulated by its beat difficulty.
 
 ### Platform personality
 Platform lengths are drawn from a weighted distribution: 25% tiny (1-2 tiles), 30% medium (3-4 tiles), 45% wide (5-7+ tiles, density-scaled). This prevents the uniform look of fixed-width platforms.
@@ -120,6 +148,38 @@ After generation, a BFS flood from ground level checks every platform for reacha
 ## Variable Jump Height — One-Cut Fix
 
 The variable jump height system halves upward velocity when the jump key is released (`zombie.vy *= 0.5`). The original implementation ran this check every frame, meaning rapid key release during spam-jumping would multiply the cut across several frames (0.5^3 = 12.5% of original velocity in 3 frames), producing tiny jumps. Fix: a `jumpCut` flag on the zombie state is set to `false` when a jump starts and `true` after the first cut. The cut only fires when `jumpCut` is false, ensuring exactly one 50% velocity reduction per jump regardless of input timing.
+
+## Juice Systems Architecture
+
+### Squash/stretch
+`zombie.scaleX` and `zombie.scaleY` are set by game events (jump, land, reversal) and lerp back to 1.0 each frame via `updateJuice(dt)`. The render function applies the scale transform anchored at the zombie's bottom-center (`zCenterX`, `zBottomY`) so feet stay planted on the ground. Without this anchor, landing squash would push the zombie into the floor.
+
+### Particles
+A flat array of particle objects (< 30 at any time). Each particle has position, velocity, life/maxLife, size, and color. Updated in `updateJuice`: position moves by velocity, vy gains `PARTICLE_GRAVITY * dt`, life ticks down. Dead particles are spliced via reverse iteration (cache-friendly, avoids skip-on-splice bug). Rendered as circles with alpha = `life/maxLife * 0.7` and size = `baseSize * alpha`.
+
+### Screen shake
+`camera.shakeX/Y` offsets are applied via `ctx.translate()` at the start of `render()`, inside a `save/restore` pair. Shake intensity decays linearly over `shakeDuration`. When multiple shakes overlap, the stronger intensity wins (Vlambeer's dampened stacking — adding would escalate to nausea). Timer resets on new shake so the decay restarts.
+
+Feral drift shake is **directional**: `camera.shakeBiasX` adds a constant pull toward the drift direction on top of the random component. This makes the world "lurch" in the direction the zombie was pushed. Directional bias follows the winning intensity — if a stronger non-directional shake (landing) overwrites a weaker directional shake (drift), bias resets to 0.
+
+### Input delay visual
+During `drift.inputDelayTimer > 0`, the render function applies two effects: (1) ±1px random jitter via an extra `ctx.translate()` inside the squash/stretch transform, and (2) a 20% black overlay (`rgba(0,0,0,0.2)`) drawn on top of the zombie fill but before the "Z" label and tier outline. No longer gated to Feral tier — triggers at any sanity where `getInputDelay() > 0` (from sanity 6 down).
+
+### Drift directional vignette
+`renderDriftVignette()` draws a one-sided linear gradient from the drift-direction edge to the canvas center. Uses `drift.flashDirection` (set when drift fires) and `drift.flashTimer` (shared with the zombie white flash) for timing. Opacity scales with `drift.lastImpulse / 300` (skips if < 50 px/s). Uses current tier color instead of hardcoded Feral orange. Drawn in screen-space after both the shake and sanity vignette restores.
+
+### Speed lines
+`renderSpeedLines()` draws 1-2 faint horizontal lines behind the zombie when `|zombie.vx| > getMaxSpeed() * SPEED_LINE_THRESHOLD`. Lines trail opposite to movement direction, starting at the zombie's trailing edge. Line count escalates from 1 to 2 at 50% intensity. Y positions have random offsets ±5-15px from zombie center to create per-frame shimmer. Opacity ramps with `intensity * (0.6-1.0 random)` so lines fade in gradually rather than popping. Color matches current tier. Drawn inside shake transform, behind zombie, after particles.
+
+### Sanity vignette
+`renderVignette()` draws a radial gradient from transparent center to tier-colored edges. Opacity scales with `getSanityT() * VIGNETTE_MAX_OPACITY`. Drawn AFTER the screen shake `ctx.restore()` so the vignette stays fixed in screen-space — the world shakes but the vignette doesn't.
+
+### Render save/restore nesting
+The render function has two nested save/restore pairs:
+1. **Outer** (lines 1537/1613): screen shake offset — all world rendering is shaken
+2. **Inner** (lines 1576/1599): zombie squash/stretch — only the zombie rectangle is scaled
+
+The direction indicator arrow is between the two restores (inside shake, outside squash/stretch). The vignette is after both restores (screen-space).
 
 ## Ground Detection Fix
 
