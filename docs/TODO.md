@@ -18,15 +18,14 @@
 - [x] Sanity sliding scales (jump velocity + deceleration interpolate smoothly across sanity 0-12)
 - [x] Sanity Gauntlet map (40x25, platforms require progressively lower sanity to reach)
 - [x] Collision fix for 1.5-tile zombie height (ground detection uses feet pixel)
-- [x] Level generator (procedural physics-aware platform generation)
+- [x] Level generator (room-grid, Spelunky-style)
   - Seeded PRNG (splitmix32) for reproducible layouts
-  - Section-based terrain: 5 archetypes (canyon, tower, open, corridor, staircase)
+  - 6×3 grid of 8×8-tile rooms with hand-designed templates
+  - Critical path from left to right with vertical diversions
   - Physics envelope from actual kinematics (v²/2g for peak height)
   - BFS reachability validation removes unreachable platforms
-  - Platform personality: mixed sizes (tiny/medium/wide)
-  - Ground variation per section, landmarks (pillars, floaters, overhangs)
-  - UI: Width, Height, Density, Min Sanity, Seed sliders + Generate/Random/Gauntlet buttons
-  - Gauntlet preset restores the original handcoded map
+  - Entity placement from room spawn points
+  - UI: Density, Min Sanity, Seed + Room Grid/Random/Level 1/Gauntlet buttons
 
 ## Playtesting Tasks
 - [x] Playtest Lucid tier — felt sluggish, fixed: BASE_ACCELERATION 1800→2400
@@ -111,14 +110,16 @@
   - Rec 3: Smooth input delay onset (starts at sanity 6, scales to 0.03s at sanity 0)
   - Bug fix: inline collision resolution in updateDrift (drift direction, not zombie.vx)
   - New tuning panel: 9 drift sliders replacing old 4 tier-based sliders
-- [x] Step 1.3: Level generator pacing upgrade
-  - Pacing-aware sequencer follows Schell's interest curve (hook → rising → valley → climax → resolution)
-  - Weighted archetype selection per beat (canyon/tower for hooks/climaxes, open/corridor for valleys/resolution)
-  - Difficulty modulation per archetype (gap widths, platform sizes, ceiling height, ground coverage, step dimensions)
-  - Transition zones at section boundaries (3-tile ground + perch when difficulty delta > 0.3)
-  - PACING_ENABLED toggle preserves old random behavior
-  - PACING_DIFFICULTY_SCALE slider (0.5-1.5) for easier/harder levels
-  - UI: Pacing checkbox + Difficulty Scale slider in tuning panel
+- [x] Step 1.3: Level generator — room-grid system (Spelunky-style)
+  - Replaced section-based generator with room-grid system
+  - 6×3 grid of 8×8-tile rooms (48×24 total = 1536×768 canvas)
+  - 9 hand-designed room templates with connection zones
+  - Critical path algorithm: left→right with vertical diversions (never backtracks)
+  - Template selection by required connections + column-based difficulty weighting
+  - Entity placement from room spawn points (5-8 civilians, 3-4 guards)
+  - BFS reachability validation preserved
+  - Deleted old section-based code (PACING_BEATS, archetypes, generateSection, etc.)
+  - UI: Room Grid / Random buttons, removed Width/Height/Pacing/DiffScale sliders
 - [x] Step 1.4: Toy validation playtest
   - Lucid: sluggish start + weak jump → bumped BASE_ACCELERATION 2400→2800, JUMP_VELOCITY -600→-650
   - Slipping: good drift balance (pass)
@@ -137,18 +138,18 @@
   - 13 edge cases prioritized (Must/Nice/Won't-handle)
   - Sanity economy model with timeline walkthrough
   - Implementation notes mapped to Sprint Backlog tasks 1.1-3.7
-- [x] Step 2.2: Civilian-threat ecology design (docs/CIVILIAN_ECOLOGY_SPEC.md)
+- [x] Step 2.2: Civilian-guard ecology design (docs/CIVILIAN_ECOLOGY_SPEC.md)
   - Living civilians replace static brain pickups (scope change from SCOPE_V1)
-  - Economy spec: sanity, HP, civilians, threat attention as resources
-  - Faction interaction matrix: zombie eats civilians, threats guard civilians, civilians flee
-  - Death scream mechanic: eating alerts threats within 128px for 3s
-  - Threat leash/guard behavior: threats patrol near assigned civilians
-  - 7 emergent behaviors identified (safe-first eating, threat consolidation, lure-and-eat, etc.)
+  - Economy spec: sanity, HP, civilians, guard attention as resources
+  - Faction interaction matrix: zombie eats civilians, guards guard civilians, civilians flee
+  - Death scream mechanic: eating alerts guards within 128px for 3s
+  - Guard leash/guard behavior: guards patrol near assigned civilians
+  - 7 emergent behaviors identified (safe-first eating, guard consolidation, lure-and-eat, etc.)
   - 4 new Lens #33 decision points (eat order, approach angle, scream management, when to stop)
   - 10 edge cases, 10 balance levers, 7 warning signs
   - Sprint Backlog impact analysis: +1M +1S new tasks, several modified tasks
 - [x] Step 2.3: Civilian variant design — stretch (docs/CIVILIAN_VARIANTS_SPEC.md)
-  - 3 types: Standard (+4 sanity), Sprinter (+2, fast flee), Brainiac (+6, near threats, large scream)
+  - 3 types: Standard (+4 sanity), Sprinter (+2, fast flee), Brainiac (+6, near guards, large scream)
   - Lens #34 (Triangularity) analysis: no dominant variant, context-dependent optimal choice
   - Systems-balance analysis: 18 total sanity (tighter economy), net sanity modeling per type
   - 8 edge cases, 8 tuning levers, 4 emergent behaviors
@@ -162,7 +163,7 @@
   - Death scream as direct function call (not event bus — Rule of Three)
   - 12-step Strangler Fig migration plan (each step atomic, game works after every step)
   - "What NOT to refactor" section: 7 systems explicitly preserved
-  - 3 data flows documented (civilian eat, threat damage, game phase transitions)
+  - 3 data flows documented (civilian eat, guard damage, game phase transitions)
   - Save/load strategy defined (minimal: level + HP via localStorage)
   - Naming conventions codified
 
@@ -195,36 +196,36 @@
 - [x] Task 1.5: Civilian eat + death scream
   - aabbOverlap(a, b) shared AABB utility
   - checkEatCollision(state): overlap → civilian dies, sanity +4 (cap 12), stats++
-  - broadcastScream(): visual shake + console log (threat alerting in Sprint 2)
+  - broadcastScream(): visual shake + console log (guard alerting in Sprint 2)
   - Particle burst + screen shake on eat
   - Tuning panel: Per Eat, Scream Range, Scream Duration sliders
 
-## Sprint 2: Threat AI + Game Flow
+## Sprint 2: Guard AI + Game Flow
 - [x] Task 2.1: Design decision — sanity-dependent pounce
-  - Feral (sanity < 4) kills threats on contact ("pounce attack")
-  - Lucid/Slipping touching a threat damages the zombie
+  - Feral (sanity < 4) kills guards on contact ("pounce attack")
+  - Lucid/Slipping touching a guard damages the zombie
   - Ties into power/control tradeoff
-- [x] Tasks 2.2 + 2.3 + 2.6: Threat entity + guard patrol + tile collision
-  - createThreat(x, y) factory function
+- [x] Tasks 2.2 + 2.3 + 2.6: Guard entity + guard patrol + tile collision
+  - createGuard(x, y) factory function
   - areSamePlatform() for guard assignment
   - assignGuards(state) — nearest alive same-platform civilian, prefer < 2 guards
-  - updateThreats() with GUARD_PATROL state (patrol near guarded civilian or patrolCenter)
+  - updateGuards() with GUARD_PATROL state (patrol near guarded civilian or patrolCenter)
   - Edge avoidance: ground-ahead + wall-ahead checks
-  - 3 threats placed spread across map
+  - 3 guards placed spread across map
   - Rendered as red rectangles ("!" label), cyan outline when guarding
-  - Tuning panel: Threat AI section (8 sliders)
-  - "Respawn Threats" button in Entities section
+  - Tuning panel: Guard AI section (8 sliders)
+  - "Respawn Guards" button in Entities section
 - [x] Task 2.4: Chase + scream response
   - CHASE state: zombie within detection range AND within leash distance
   - RESPONDING_TO_SCREAM state: move to alert target, timer-based
-  - broadcastScream() now alerts real threats within SCREAM_ALERT_RANGE
+  - broadcastScream() now alerts real guards within SCREAM_ALERT_RANGE
   - Guard reassignment on civilian death (assignGuards called in checkEatCollision)
   - Render colors: red (patrol), magenta (chase), yellow (scream response)
-- [x] Task 2.5: Threat-zombie collision + pounce
-  - checkThreatCollision(state): AABB overlap → pounce or damage
-  - Feral (sanity < POUNCE_SANITY_THRESHOLD): kill threat, particles, shake, reassign guards
+- [x] Task 2.5: Guard-zombie collision + pounce
+  - checkGuardCollision(state): AABB overlap → pounce or damage
+  - Feral (sanity < POUNCE_SANITY_THRESHOLD): kill guard, particles, shake, reassign guards
   - Non-Feral: damageZombie (respects iframes)
-  - threatsPounced stat tracked
+  - guardsPounced stat tracked
 - [x] Tasks 2.7 + 2.8: Level exit + level complete
   - findAndSetExit(): scan right side of map for valid 2-tile-high space
   - checkExitZone(): AABB overlap zombie ↔ exit
@@ -233,6 +234,23 @@
   - R to restart from level complete
   - Time tracking: GameState.stats.timeElapsed += dt in game loop
   - Exit placed on all map types (Gauntlet, generated, random)
+
+## Sprint 3: Level Assembly + HUD + Integration
+- [x] Tasks 3.1 + 3.2: Level 1 design + build
+  - 50×18 "First Run" level with 4 sections (Intro, First Encounter, Vertical Tradeoff, Final Push)
+  - 5 civilians (2 unguarded, 3 guarded), 3 guards at explicit positions
+  - Ground path completable at any sanity, upper platforms gate behind lower sanity
+  - LEVEL_1 data constant with map, civilian, and guard positions
+  - loadLevel1() + placeEntitiesFromLevelData() functions
+  - Level 1 is now the default level (Gauntlet still available via button)
+  - currentLevel tracking for proper resetGameState() entity repopulation
+- [x] Task 3.3: Player-facing HUD
+  - Sanity bar (top-left, colored by tier)
+  - HP hearts (diamond shapes below sanity bar)
+  - renderHUD() drawn in screen-space after vignette effects
+- [x] Task 3.8: Update docs
+- [ ] Task 3.5: Balance tuning pass (interactive — user plays)
+- [ ] Task 3.7: Full vertical slice playtest (interactive — user plays)
 
 ## Upcoming
 
@@ -245,5 +263,5 @@
 ## DO NOT BUILD (until Sprint 1)
 - Sound, sprites, animations, save/load
 - Multiple levels or level progression
-- Second threat type
+- Second guard type
 - Environmental narrative

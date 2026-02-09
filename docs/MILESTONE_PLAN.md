@@ -14,7 +14,7 @@
 |---|------|---------|------|---------------------|
 | 1 | **Vertical Slice** | Prove the core loop is fun | L | 1 level, all core systems, rectangle art |
 | 2 | **Pre-Production Gate** | Prove the game is worth building | M | 2 levels, tuned, all core systems solid |
-| 3 | **Content + Identity** | Build the real game | XL | 3-5 levels, art, audio, second threat type |
+| 3 | **Content + Identity** | Build the real game | XL | 3-5 levels, art, audio, second guard type |
 | 4 | **Polish + Ship** | Make it shippable | M | Final build, tested, deployed |
 
 **Pre-production exit gate** (between Milestones 2 and 3): "Two complete, playable levels with all core systems working." If this gate fails, the project pivots or is archived — do not enter production hoping it gets better.
@@ -23,7 +23,7 @@
 
 ## Milestone 1: Vertical Slice
 
-**Purpose:** Prove the core loop — navigate → eat civilians → manage sanity → survive threats → reach exit — is fun. This is the single most important milestone. If the loop isn't fun with rectangles, art won't save it.
+**Purpose:** Prove the core loop — navigate → eat civilians → manage sanity → survive guards → reach exit — is fun. This is the single most important milestone. If the loop isn't fun with rectangles, art won't save it.
 
 **Previous Milestone:** Movement Toy (complete)
 **Next Milestone:** Pre-Production Gate
@@ -33,38 +33,38 @@
 | # | Goal | Deliverable | Size | How to Verify |
 |---|------|-------------|------|---------------|
 | 1 | Sanity drains in real time | Sanity decreases at a configurable rate per second. Rate tunable via the existing tuning panel. | S | Slider auto-decreases. Zombie hits Gone state after expected duration. |
-| 2 | Player has health | HP variable, damage function, death at 0. HP displayed on screen. | S | Take damage from threat → HP decreases. HP = 0 → game over screen. |
-| 3 | Civilians exist and restore sanity | Living civilian entities with flee AI placed in the level. Zombie catches and eats civilian → sanity restored by configurable amount. Civilian disappears and triggers death scream alerting nearby threats. | L | Walk into civilian → sanity increases (capped at 12). Civilian disappears, scream indicator fires. Nearby threats respond. Debug panel confirms sanity value. |
-| 4 | One threat type guards civilians and damages player | AI entity with guard patrol, leash-based chase, and death scream response. Deals damage on contact. Visually distinct rectangle (red). | M | Threat patrols near assigned civilian. Detects player within leash range → chases. Responds to death screams. Contact → player takes damage. Threat respects collision with platforms. |
+| 2 | Player has health | HP variable, damage function, death at 0. HP displayed on screen. | S | Take damage from guard → HP decreases. HP = 0 → game over screen. |
+| 3 | Civilians exist and restore sanity | Living civilian entities with flee AI placed in the level. Zombie catches and eats civilian → sanity restored by configurable amount. Civilian disappears and triggers death scream alerting nearby guards. | L | Walk into civilian → sanity increases (capped at 12). Civilian disappears, scream indicator fires. Nearby guards respond. Debug panel confirms sanity value. |
+| 4 | One guard type guards civilians and damages player | AI entity with guard patrol, leash-based chase, and death scream response. Deals damage on contact. Visually distinct rectangle (red). | M | Guard patrols near assigned civilian. Detects player within leash range → chases. Responds to death screams. Contact → player takes damage. Guard respects collision with platforms. |
 | 5 | Level has entrance and exit | Spawn point + exit zone. Reaching exit → level complete screen. | S | Walk to exit → "Level Complete" overlay. Clear feedback. |
 | 6 | Win/lose states work | Sanity 0 → "Mind Lost" (exists). HP 0 → "Game Over." Exit reached → "Level Complete." All states offer restart. | S | Each state reachable and restartable. No softlocks. |
-| 7 | One complete test level | A level designed (via generator + hand-tuning) with civilian placements, threat placements, entrance, and exit. Tests all core systems together. | M | Play from entrance to exit. Must eat at least 1 civilian to survive. Must navigate past at least 2 threats. Completable in 2-5 minutes. |
+| 7 | One complete test level | A level designed (via generator + hand-tuning) with civilian placements, guard placements, entrance, and exit. Tests all core systems together. | M | Play from entrance to exit. Must eat at least 1 civilian to survive. Must navigate past at least 2 guards. Completable in 2-5 minutes. |
 
 ### Secondary Goals
 
 | # | Goal | Deliverable | Size |
 |---|------|-------------|------|
 | 8 | Basic HUD (not debug panel) | Player-facing sanity bar + HP display. Positioned for gameplay, not debugging. | S |
-| 9 | Threat killed by jump-on-head or avoidance-only decision | Decide: can the zombie kill threats (platformer stomp)? Or is this pure avoidance? The answer determines the entire threat design. | S (design decision, not code) |
+| 9 | Guard killed by jump-on-head or avoidance-only decision | Decide: can the zombie kill guards (platformer stomp)? Or is this pure avoidance? The answer determines the entire guard design. | S (design decision, not code) |
 
 ### Exit Criteria
 
 **Milestone 1 is COMPLETE when:**
 
 - [ ] Sanity drains over time and is restored by eating civilians
-- [ ] Player takes damage from threats and dies at 0 HP
-- [ ] At least one threat patrols and chases the player
+- [ ] Player takes damage from guards and dies at 0 HP
+- [ ] At least one guard patrols and chases the player
 - [ ] Level has a clear start and end, with a "Level Complete" screen on reaching the exit
 - [ ] All three failure states work (sanity 0, HP 0) with restart capability
 - [ ] The complete level is playable start-to-finish in 2-5 minutes
-- [ ] The core loop is testable: "Am I having fun navigating, eating civilians, dodging threats, and managing sanity?"
+- [ ] The core loop is testable: "Am I having fun navigating, eating civilians, dodging guards, and managing sanity?"
 - [ ] No critical bugs (crashes, softlocks, clipping through level)
 - [ ] Movement feel has not regressed from the toy (test at all sanity tiers)
 
 **Milestone 1 FAILS if:**
 
 - The core loop is not fun even after a tuning pass. If navigate → eat → dodge → exit doesn't engage, the game concept needs rethinking before proceeding.
-- Threats feel unfair or unlearnable — the player can't develop strategies against them.
+- Guards feel unfair or unlearnable — the player can't develop strategies against them.
 - Sanity drain + civilian consumption doesn't create meaningful decisions (drain too slow = never eat; drain too fast = always desperate; civilians too common = no tension).
 
 **If Milestone 1 fails:** Do NOT proceed to Milestone 2. Diagnose which element of the loop is failing (Lens #2: which part of the essential experience is broken?). Redesign that element and re-test. Budget one additional iteration cycle. If it still fails after redesign, evaluate kill criteria.
@@ -73,7 +73,7 @@
 
 | Risk | Likelihood | Impact | Mitigation |
 |------|-----------|--------|------------|
-| Threat AI is hard to tune (too aggressive / too passive) | Medium | High — unfun threats kill the loop | Start simple: guard patrol only. Add leash-based chase and scream response as second pass. Use detection range and leash distance as primary tuning knobs. |
+| Guard AI is hard to tune (too aggressive / too passive) | Medium | High — unfun guards kill the loop | Start simple: guard patrol only. Add leash-based chase and scream response as second pass. Use detection range and leash distance as primary tuning knobs. |
 | Sanity drain rate is hard to balance for real-time | Medium | Medium — paper prototype was turn-based, real-time pacing is different | Start with a slow drain (60 seconds Lucid→Gone with no eating). Tune from there. The tuning panel makes this instant. |
 | Adding new systems breaks movement feel | Low | High — the proven foundation becomes unproven | Run the movement regression checklist after each system addition. If feel degrades, revert last change before debugging. |
 | Scope creep ("just add one more thing to the slice") | High | Medium — milestone drags | The deliverable list above is locked. Nothing else enters this milestone. New ideas go to a "Future" column in TODO.md. |
@@ -91,18 +91,18 @@
 
 | # | Goal | Deliverable | Size | How to Verify |
 |---|------|-------------|------|---------------|
-| 1 | Second level designed and playable | A second level with different layout, threat placement, and civilian routing. Harder than Level 1. | M | Playable start-to-finish. Noticeably different from Level 1. Harder but fair. |
+| 1 | Second level designed and playable | A second level with different layout, guard placement, and civilian routing. Harder than Level 1. | M | Playable start-to-finish. Noticeably different from Level 1. Harder but fair. |
 | 2 | Level progression works | Completing Level 1 → loads Level 2. Completing Level 2 → victory screen. | S | Seamless transition. State resets correctly between levels (HP persists? Sanity resets? Design decision made and implemented). |
-| 3 | Difficulty scales between levels | Level 2 has more threats, tighter platforms, and/or requires lower sanity to traverse. | S | Level 2 is harder than Level 1 by a testable metric (more deaths, lower average completion sanity). |
-| 4 | Balance tuning pass | Sanity drain rate, sanity restore amount, threat damage, threat speed, civilian placement density — all tuned so the loop feels right across both levels. | M | Play both levels 5+ times. Consistent experience: not too easy, not too hard. The sanity tradeoff feels meaningful. |
+| 3 | Difficulty scales between levels | Level 2 has more guards, tighter platforms, and/or requires lower sanity to traverse. | S | Level 2 is harder than Level 1 by a testable metric (more deaths, lower average completion sanity). |
+| 4 | Balance tuning pass | Sanity drain rate, sanity restore amount, guard damage, guard speed, civilian placement density — all tuned so the loop feels right across both levels. | M | Play both levels 5+ times. Consistent experience: not too easy, not too hard. The sanity tradeoff feels meaningful. |
 | 5 | Title screen and game flow | Title → Level 1 → Level 2 → Victory. Game Over → Restart from current level or title. | S | Complete flow works with no dead ends. |
 
 ### Secondary Goals
 
 | # | Goal | Deliverable | Size |
 |---|------|-------------|------|
-| 6 | Tuning panel updated for new systems | Threat speed, detection range, sanity drain rate, sanity restore amount all tunable via sliders. | S |
-| 7 | Design decision documented: threat interaction model | Is the game pure avoidance, stomp-to-kill, or something else? Decision documented in GDD with rationale. | S |
+| 6 | Tuning panel updated for new systems | Guard speed, detection range, sanity drain rate, sanity restore amount all tunable via sliders. | S |
+| 7 | Design decision documented: guard interaction model | Is the game pure avoidance, stomp-to-kill, or something else? Decision documented in GDD with rationale. | S |
 
 ### Exit Criteria (PRE-PRODUCTION GATE)
 
@@ -111,12 +111,12 @@
 - [ ] Two complete, playable levels with all core systems working
 - [ ] The core loop is fun — "I want to play again" after a session
 - [ ] Sanity risk/reward tradeoff creates genuine decisions (Lens #33)
-- [ ] Threats are learnable and fair (Koster: player can identify and master the pattern)
+- [ ] Guards are learnable and fair (Koster: player can identify and master the pattern)
 - [ ] Difficulty scales between levels without feeling arbitrary
 - [ ] Complete game flow works (title → play → win/lose → restart)
 - [ ] No critical or major bugs
 - [ ] Movement feel verified at all sanity tiers (regression check)
-- [ ] Design decisions documented: threat model, level transition rules, sanity economy values
+- [ ] Design decisions documented: guard model, level transition rules, sanity economy values
 - [ ] Developer still wants to build this game (Lens #18: Passion)
 
 **Gate Decision:**
@@ -149,11 +149,11 @@
 
 | # | Goal | Deliverable | Size | How to Verify |
 |---|------|-------------|------|---------------|
-| 1 | All levels built (3-5 total) | Each level designed with distinct character, civilian routing, threat placement, and difficulty target. Later levels require lower sanity for traversal. | L | Each level playable start-to-finish. Full game playthrough takes 15-20 minutes. |
+| 1 | All levels built (3-5 total) | Each level designed with distinct character, civilian routing, guard placement, and difficulty target. Later levels require lower sanity for traversal. | L | Each level playable start-to-finish. Full game playthrough takes 15-20 minutes. |
 | 2 | Player art | Gentleman zombie sprite with visual states for each sanity tier (minimum: Lucid and Feral look different). Replaces green rectangle. | M | Zombie reads clearly against backgrounds. Sanity state is visible at a glance. |
 | 3 | Environment tileset | City/building tiles replacing colored blocks. Consistent style. Enough variety for 3-5 visually distinct levels. | M | Levels look like a decaying city. Tiles read clearly as solid vs. empty. |
-| 4 | Threat + civilian sprites | Visual identity for threats and civilians. Threats are immediately identifiable as dangerous. Civilians are immediately identifiable as food sources. | S | First-time player understands "avoid red, chase blue" (or equivalent) within 5 seconds. |
-| 5 | Second threat type | Different behavior from threat 1. Creates routing decisions: "go through the patrollers or the chasers?" | M | Both threat types in later levels. Player can distinguish them by behavior and appearance. Different strategies for each. |
+| 4 | Guard + civilian sprites | Visual identity for guards and civilians. Guards are immediately identifiable as dangerous. Civilians are immediately identifiable as food sources. | S | First-time player understands "avoid red, chase blue" (or equivalent) within 5 seconds. |
+| 5 | Second guard type | Different behavior from guard 1. Creates routing decisions: "go through the patrollers or the chasers?" | M | Both guard types in later levels. Player can distinguish them by behavior and appearance. Different strategies for each. |
 | 6 | Critical SFX | Jump, land, eat civilian, take damage, die, death scream, level complete. Minimum 8-10 sound effects. | M | Game is no longer silent. Each critical action has audio feedback. |
 | 7 | Music | At minimum 1 looping track. Ideally 2 layers (calm/tense) crossfaded by sanity. | M | Music plays during gameplay. Doesn't loop annoyingly within a 5-minute level. |
 | 8 | Sanity visual effects | Screen vignette, color desaturation, or distortion as sanity drops. Communicates sanity state without reading the HUD. | S | Player can tell approximate sanity tier from visual feel alone. |
@@ -179,8 +179,8 @@
 **Milestone 3 is COMPLETE when:**
 
 - [ ] All planned levels are built, playable, and have final (or near-final) art
-- [ ] Player sprite, tileset, threat sprites, and civilian sprites are in-game
-- [ ] Two distinct threat types with different behaviors
+- [ ] Player sprite, tileset, guard sprites, and civilian sprites are in-game
+- [ ] Two distinct guard types with different behaviors
 - [ ] Critical SFX in place for all major player actions
 - [ ] At least 1 music track plays during gameplay
 - [ ] Sanity visual effects communicate state
@@ -201,7 +201,7 @@
 | Art pipeline is unproven | High | High — biggest unknown in the project | Prove the pipeline on player sprite FIRST before committing to full tileset. If AI generation doesn't work, commit to geometric/stylized art immediately. |
 | Audio sourcing takes too long | Medium | Medium — game works without it | Use free asset libraries (freesound.org, OpenGameArt) first. Only create custom audio if library sounds don't fit. |
 | Level design takes longer than expected | Medium | Medium — 5 levels is ambitious | Build levels in priority order: Level 1 (tutorial), Level 3 (climax), Level 2 (middle). Cut Level 4-5 if needed. |
-| Feature creep from "just one more enemy type" | High | High — every addition cascades into balance, art, audio, level design | Scope is locked. Second threat type is the cap. Everything else is v1.1. |
+| Feature creep from "just one more enemy type" | High | High — every addition cascades into balance, art, audio, level design | Scope is locked. Second guard type is the cap. Everything else is v1.1. |
 
 ---
 
@@ -217,7 +217,7 @@
 | # | Goal | Deliverable | Size | How to Verify |
 |---|------|-------------|------|---------------|
 | 1 | Bug fix sprint | All critical and major bugs fixed. Minor bugs documented for v1.1. | M | Bug list triaged. Zero critical, zero major remaining. |
-| 2 | Balance sweep | Final tuning pass on sanity drain, civilian placement, threat behavior, difficulty curve. | S | Full playthrough feels fair and engaging. No dominant strategy. No frustration spikes. |
+| 2 | Balance sweep | Final tuning pass on sanity drain, civilian placement, guard behavior, difficulty curve. | S | Full playthrough feels fair and engaging. No dominant strategy. No frustration spikes. |
 | 3 | Playtest session | At least 1 full playthrough by someone who hasn't seen the game before. Observe without guidance. | S | New player completes the game or fails in a learnable way. No confusion about objectives. No softlocks. |
 | 4 | Remove debug tools | Debug panel and tuning panel hidden or removed from the shipped build. No console spam. | S | Clean build with no developer UI visible. |
 | 5 | Store page / release materials | itch.io page description, 3-5 screenshots, short tagline. | S | Page exists and looks professional enough to click "Play." |
@@ -255,7 +255,7 @@ Movement Toy (DONE)
     │
     ▼
 Milestone 1: Vertical Slice
-    │  Adds: sanity drain, health, civilians, 1 threat, 1 level, win/lose
+    │  Adds: sanity drain, health, civilians, 1 guard, 1 level, win/lose
     │
     ▼
 Milestone 2: Pre-Production Gate  ◄── GO/NO-GO DECISION
@@ -264,7 +264,7 @@ Milestone 2: Pre-Production Gate  ◄── GO/NO-GO DECISION
     │
     ▼
 Milestone 3: Content + Identity
-    │  Adds: all levels, art, audio, 2nd threat, SFX, music, sanity VFX
+    │  Adds: all levels, art, audio, 2nd guard, SFX, music, sanity VFX
     │
     ▼
 Milestone 4: Polish + Ship

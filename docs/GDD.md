@@ -32,7 +32,7 @@ Enter Map -> Navigate toward Exit -> Manage Sanity -> Eat/Fight/Flee -> Reach Ex
 1. **Zombie turn** — Player moves (up to movement limit) and takes one action (attack, eat, or wait)
 2. **Hunter phase** — All hunters execute AI (respond to alerts, pursue zombie, guard civilians, fight monsters)
 3. **Monster phase** — All monsters execute AI (wander, attack nearby entities)
-4. **Civilian phase** — All civilians execute AI (flee from threats, seek safety near hunters)
+4. **Civilian phase** — All civilians execute AI (flee from guards, seek safety near hunters)
 5. **End of round** — Sanity drains, starvation check, new round begins
 6. **Involuntary action check** — At Slipping/Feral tiers, zombie may act against player's will
 
@@ -126,7 +126,7 @@ Involuntary eats still restore sanity and trigger the death scream mechanic.
 1. **Respond to death scream** — If alerted, move toward scream location for 2 turns
 2. **Pursue zombie** — If zombie within aggro range, chase and attack
 3. **Fight monsters** — If monster within fight range, engage
-4. **Guard civilians** — Stay near nearest civilian (max 2 guards per civilian, surplus hunt threats)
+4. **Guard civilians** — Stay near nearest civilian (max 2 guards per civilian, surplus hunt guards)
 5. **Patrol** — Move toward nearest civilian if too far
 
 Hunters are the zombie's primary antagonist. They cluster around civilians, making eating dangerous. The leash mechanic means more civilians = more spread-out hunter coverage.

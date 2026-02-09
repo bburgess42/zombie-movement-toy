@@ -47,7 +47,7 @@ Everything below currently exists in `zombie-movement-toy/index.html` (1615 line
 | Save / Load | 0% | Maybe |
 | Environmental narrative | 0% | Maybe |
 | Civilian type variants | 0% | Maybe |
-| Full three-faction ecology (cut — bounded civilian-threat ecology is Must Have) | 0% | No |
+| Full three-faction ecology (cut — bounded civilian-guard ecology is Must Have) | 0% | No |
 
 ---
 
@@ -64,9 +64,9 @@ Without these, the game concept does not function. Cut any of these and the esse
 | **Movement system** (exists) | Done | The foundation. Proven and tuned. |
 | **Sanity tier system** (exists) | Done | The core tension mechanic. Proven. |
 | **Sanity drain over time** | S | The clock that drives urgency. Without drain, there's no pressure to eat. Paper prototype validated 0.90/round; real-time equivalent needed. |
-| **Civilian entities (living food)** | L | Living NPCs that flee from the zombie and seek safety near threats. Eating a civilian restores sanity and triggers a death scream that alerts nearby threats. Replaces static brain pickups — adds pursuit, risk/reward (scream), and moral weight. Without food sources, sanity only goes down. |
+| **Civilian entities (living food)** | L | Living NPCs that flee from the zombie and seek safety near guards. Eating a civilian restores sanity and triggers a death scream that alerts nearby guards. Replaces static brain pickups — adds pursuit, risk/reward (scream), and moral weight. Without food sources, sanity only goes down. |
 | **Player health + damage** | S | The zombie can die. Without mortality, there's no Thrill of Danger. Paper prototype validated 5 HP. |
-| **At least one threat type** | M | Something that hurts the player and guards civilians. Threats patrol near assigned civilians (leash behavior), chase the zombie on detection, and respond to death screams. One type is enough for v1. |
+| **At least one guardtype** | M | Something that hurts the player and guards civilians. Guards patrol near assigned civilians (leash behavior), chase the zombie on detection, and respond to death screams. One type is enough for v1. |
 | **Level start + exit** | S | The objective: get from A to B. Without this, there's no goal. |
 | **At least 3 playable levels** | L | Enough content to demonstrate the experience. Procedural generator already exists — this is level design using existing tools, not new tech. |
 | **Basic HUD** | S | Sanity meter + health. The player needs to know their state. Current debug panel is designer-facing, not player-facing. |
@@ -74,7 +74,7 @@ Without these, the game concept does not function. Cut any of these and the esse
 | **Basic title screen + restart** | S | Player needs to be able to start and restart. Minimal — not a menu system, just a way in. |
 | **Art: player character** | M | Replace the green rectangle. The zombie needs visual identity. Sanity tiers should be visually distinct. |
 | **Art: environment tileset** | M | Replace the colored blocks. The "decaying city" needs to read as a city. |
-| **Art: threat sprites** | S | Whatever the threat type is needs to be visually identifiable. |
+| **Art: guardsprites** | S | Whatever the guardtype is needs to be visually identifiable. |
 
 ### SHOULD HAVE (Expected)
 
@@ -82,15 +82,15 @@ Players of platformers will expect these. Their absence would be noticed but the
 
 | Feature | Size | Justification |
 |---------|------|---------------|
-| **Two threat types** (e.g., patrollers + chasers) | M | One threat type works but feels thin. Two creates tactical variety — Schell's Lens #33 (Meaningful Choices): "Do I go through the patrollers or the chasers?" |
+| **Two guardtypes** (e.g., patrollers + chasers) | M | One guardtype works but feels thin. Two creates tactical variety — Schell's Lens #33 (Meaningful Choices): "Do I go through the patrollers or the chasers?" |
 | **Pause menu** | S | Players expect to pause. |
 | **SFX (critical sounds)** | M | Footsteps, jump, land, eat civilian, death scream, take damage, die. Movement feel is dramatically enhanced by audio (Swink: feedback layer). |
 | **Music (at minimum: 1 track)** | M | A single adaptive or looping track. Silence in a platformer reads as broken, not atmospheric. |
 | **Difficulty scaling across levels** | S | Levels should get harder. The generator supports min-sanity targeting — this is tuning, not new code. |
 | **Juice: screen shake, landing squash** | S | The movement toy feels "dead" without feedback (per Phase 1 roadmap). A handful of juice effects close the feedback loop (Swink). |
 | **Sanity visual effects** | S | Screen distortion, color shift, or vignette as sanity drops. Communicates state without HUD. Sells the "losing your mind" fantasy. |
-| **Civilian + threat placement tuning** | S | Civilians and their threat guards need to be placed thoughtfully — balanced ratio of unguarded (safe) and guarded (risky) civilians to create routing decisions. |
-| **Threat AI: enhanced behaviors** | M | Beyond basic guard/chase (which is now Must Have), add patrol pattern variety, group coordination, or sanity-dependent detection range. |
+| **Civilian + guardplacement tuning** | S | Civilians and their guardguards need to be placed thoughtfully — balanced ratio of unguarded (safe) and guarded (risky) civilians to create routing decisions. |
+| **Guard AI: enhanced behaviors** | M | Beyond basic guard/chase (which is now Must Have), add patrol pattern variety, group coordination, or sanity-dependent detection range. |
 | **Death animation / respawn** | S | Feedback on dying. Currently nothing happens — the game just stops. |
 
 ### NICE TO HAVE (Bonus)
@@ -100,7 +100,7 @@ Enhance the experience. First candidates for cutting.
 | Feature | Size | Cutting Framework |
 |---------|------|-------------------|
 | **Multiple civilian types with abilities** | L | 1. Does removing change core? **No** — single civilian type (sanity restore) delivers the core loop. 2. Will players notice? **Some will** — but first-time players won't miss what they never saw. 3. Simplify to 30%? **Yes** — one special civilian type (e.g., speed boost on eat) instead of a full system. 4. Post-launch? **Yes** — trivially addable. **Decision: Defer to v1.1. If time permits, add ONE special civilian type.** |
-| **Three-faction ecology (full)** | XL | 1. Core? **No** — the bounded civilian-threat ecology (civilians + threat guarding + death scream) is now in Must Have. The FULL three-faction ecology (sanity-dependent reactions, inter-faction combat, population dynamics) remains cut. 2. Notice? **No**. 3. Simplify? **Done** — simplified to civilian-threat guard relationship without faction combat or sanity-dependent NPC reactions. 4. Post-launch? **Yes**. **Decision: Full ecology cut. Bounded civilian-threat ecology promoted to Must Have. See CIVILIAN_ECOLOGY_SPEC.md.** |
+| **Three-faction ecology (full)** | XL | 1. Core? **No** — the bounded civilian-guard ecology (civilians + guardguarding + death scream) is now in Must Have. The FULL three-faction ecology (sanity-dependent reactions, inter-faction combat, population dynamics) remains cut. 2. Notice? **No**. 3. Simplify? **Done** — simplified to civilian-guard guard relationship without faction combat or sanity-dependent NPC reactions. 4. Post-launch? **Yes**. **Decision: Full ecology cut. Bounded civilian-guard ecology promoted to Must Have. See CIVILIAN_ECOLOGY_SPEC.md.** |
 | **Environmental narrative** | M | 1. Core? **No** — the essential experience is about movement feel, not story. 2. Notice? **Depends** — some players care about "why am I here?" 3. Simplify? **Yes** — a few text signs or environmental details instead of a Player Knowledge Map. 4. Post-launch? **Yes**. **Decision: Defer. Add 2-3 environmental text hints if time permits, but no authored narrative system.** |
 | **Save / Load** | M | 1. Core? **No** — with 3 short levels, session length is ~15-20 min. 2. Notice? **Maybe** — depends on level length. 3. Simplify? **Yes** — save level progress only (which level you're on), not mid-level state. 4. Post-launch? **Yes**. **Decision: Defer. localStorage level checkpoint only if levels exceed 5 min each.** |
 | **Adaptive music** | L | 1. Core? **No** — a single track works. 2. Notice? **Yes, musicians will.** Most players won't. 3. Simplify? **Yes** — two layers (calm/tense) crossfaded by sanity level. 4. Post-launch? **Yes**. **Decision: If music exists at all, do the simple 2-layer version. Otherwise defer.** |
@@ -137,23 +137,23 @@ These are out of scope. Listing them prevents scope creep.
 
 1. **Movement** — Exists. Proven. No changes needed.
 2. **Sanity** — Exists (tier system, smooth interpolation, drift). Add real-time drain.
-3. **Health** — New. Simple HP counter. Take damage from threats. Die at 0.
-4. **Civilians** — New. Living NPCs placed in levels. Flee from zombie, seek safety near threats. Eating restores sanity, triggers death scream alerting nearby threats.
-5. **One threat type** — New. AI entity that damages the player. Guards civilians (leash/patrol), chases on detection, responds to death screams.
-6. **Level structure** — Entrance, exit, civilian placements, threat placements. 3 levels minimum.
+3. **Health** — New. Simple HP counter. Take damage from guards. Die at 0.
+4. **Civilians** — New. Living NPCs placed in levels. Flee from zombie, seek safety near guards. Eating restores sanity, triggers death scream alerting nearby guards.
+5. **One guardtype** — New. AI entity that damages the player. Guards civilians (leash/patrol), chases on detection, responds to death screams.
+6. **Level structure** — Entrance, exit, civilian placements, guardplacements. 3 levels minimum.
 7. **HUD** — Sanity bar, health display. Minimal.
 8. **Win/lose states** — Exit reached = level complete. HP 0 or Sanity 0 = game over.
 9. **Title screen** — Start button. Nothing more.
-10. **Art** — Player sprite (4 sanity states), environment tileset, threat sprite, civilian sprite. Geometric/stylized, not realistic.
+10. **Art** — Player sprite (4 sanity states), environment tileset, guardsprite, civilian sprite. Geometric/stylized, not realistic.
 
 ### Expected Systems (Should Ship)
 
-11. **Second threat type** — Different behavior from first. Creates routing choices.
+11. **Second guardtype** — Different behavior from first. Creates routing choices.
 12. **SFX** — Critical sounds only (jump, land, eat, damage, death).
 13. **Music** — One looping track minimum.
 14. **Juice** — Screen shake on damage, landing feedback, sanity visual effects.
 15. **Pause** — Pause button/key.
-16. **Difficulty scaling** — Later levels are harder (more threats, tighter platforms, lower min-sanity requirements).
+16. **Difficulty scaling** — Later levels are harder (more guards, tighter platforms, lower min-sanity requirements).
 17. **Death/respawn feedback** — Clear game-over screen with restart option.
 
 ### Stretch Goals (Include If Time Permits)
@@ -174,17 +174,17 @@ Using relative sizing. Baseline: the movement toy took ~4 sessions to build and 
 |---------|------|-------|
 | Sanity drain (real-time) | S | Timer + drain rate. Constants already defined in GDD. |
 | Health system | S | HP variable, damage function, death check. |
-| Civilian entities + death scream | L | Civilian entity with flee/seek/wander AI, eat collision, sanity restore, death scream event system, threat guard reassignment. |
-| Threat type 1 (guard + patrol + chase + scream response) | L | State machine: guard patrol → detect → chase → respond to scream. Leash to civilian. Collision damage. Guard reassignment when civilian dies. |
-| Level structure (3 levels) | L | Use generator to create base layouts, hand-tune, add civilian/threat placements. Entrance/exit markers. Level loading. |
+| Civilian entities + death scream | L | Civilian entity with flee/seek/wander AI, eat collision, sanity restore, death scream event system, guardguard reassignment. |
+| Guard type 1 (guard + patrol + chase + scream response) | L | State machine: guard patrol → detect → chase → respond to scream. Leash to civilian. Collision damage. Guard reassignment when civilian dies. |
+| Level structure (3 levels) | L | Use generator to create base layouts, hand-tune, add civilian/guard placements. Entrance/exit markers. Level loading. |
 | HUD | S | Sanity bar + HP display. Canvas overlay or DOM. |
 | Win/lose states | S | State checks + overlay screens. |
 | Title screen | S | DOM overlay with start button. |
 | Art: player sprite | M | Gentleman zombie in 4 sanity states. AI-generated or geometric. |
 | Art: tileset | M | City/building tiles. ~20 tile variants. |
-| Art: threat + civilian sprites | S | 1-2 threat sprites + civilian sprite. |
-| **Must Have Total** | **~4L** | (increased from ~3L due to civilian AI + threat guarding) |
-| Threat type 2 | M | Second AI behavior variant. |
+| Art: guard+ civilian sprites | S | 1-2 guardsprites + civilian sprite. |
+| **Must Have Total** | **~4L** | (increased from ~3L due to civilian AI + guardguarding) |
+| Guard type 2 | M | Second AI behavior variant. |
 | SFX | M | Source/create ~10 sounds. Web Audio API integration. |
 | Music | M | Source/create 1 track. Audio element or Web Audio. |
 | Juice effects | S | Screen shake, landing squash, sanity vignette. |
@@ -215,7 +215,7 @@ Using relative sizing. Baseline: the movement toy took ~4 sessions to build and 
 
 The movement toy is a proven core mechanic prototype. Per the Cerny Method:
 - Core mechanic validated? **YES** — movement feel is tuned and playtested.
-- Core loop proven? **NO** — no objectives, no threats, no civilians. The loop (navigate → eat → manage sanity → survive) is designed but not built.
+- Core loop proven? **NO** — no objectives, no guards, no civilians. The loop (navigate → eat → manage sanity → survive) is designed but not built.
 - Art pipeline tested? **NO** — zero art assets exist.
 - Tech approach proven? **MOSTLY** — HTML5 Canvas is proven. AI entity management, level loading, and audio integration are unproven.
 
@@ -230,7 +230,7 @@ The 80/20 of Brains for Breakfast v1:
 **The 20% that delivers 80% of the experience:**
 - Movement + sanity (exists)
 - Civilians + sanity drain + death scream (the core resource loop with risk/reward)
-- One threat type that guards civilians (creates danger co-located with food)
+- One guardtype that guards civilians (creates danger co-located with food)
 - 3 levels with an exit (provides structure and completion)
 
 **Everything else is enhancement.** A version with just these four pillars, using rectangles and no audio, would still answer the question: "Is this game fun?"

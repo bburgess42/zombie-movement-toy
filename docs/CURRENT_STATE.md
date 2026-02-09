@@ -1,6 +1,6 @@
 # Zombie Movement Toy — Current State
 
-**Version:** Sprint 2 complete (threat AI + game flow)
+**Version:** Sprint 3 complete (Milestone 1 — Vertical Slice)
 **Last updated:** Feb 2026
 
 ## Overview
@@ -50,32 +50,21 @@ Drift impulse and interval interpolate smoothly via `getSanityT()` with a t² cu
 - World boundary clamping
 - No clipping through platforms
 
-### Level Generator
-Procedural physics-aware platform generation in the tuning panel. Calculates jump envelope from actual physics constants (JUMP_VELOCITY, GRAVITY, FERAL_JUMP_MULT) to place platforms that are reachable at the specified minimum sanity level.
+### Level Generator (Room-Grid, Spelunky-style)
+Procedural room-grid level generation inspired by Spelunky. Hand-designed room templates are procedurally arranged on a grid with a critical path from left to right.
 
+- **Room grid**: 24 columns × 6 rows of 8×8-tile rooms = 192×48 total tiles (6144×1536 canvas)
+- **9 room templates**: flat_ground, gap_jump, platforms_up, climb_exit_top, drop_exit_bottom, enter_from_above, enter_from_below, vertical_shaft, dead_end
+- **Connection zones**: fixed positions at room boundaries (left/right: cols 0/7 rows 5-6; top/bottom: row 0/7 cols 3-4) ensure seamless joins between compatible rooms
+- **Critical path algorithm**: starts at (0, 2), walks RIGHT with random vertical diversions (UP/DOWN), never backtracks left, ends at col 5. Guarantees every column visited, path length 6-10 rooms.
+- **Template selection**: filters by required connections (superset match), weighted by column-based difficulty (early=easy, late=hard)
+- **Non-path rooms**: adjacent to path rooms get matching connections; isolated rooms get dead_end template
+- **Entity placement**: 1 civilian per critical-path room (from template spawn points), 1-2 bonus civilians in off-path rooms, 3-4 guards from template guard spawn points
 - **Seeded PRNG** (splitmix32): reproducible layouts from seed
-- **Pacing-aware sequencer** (Schell interest curve): sections follow a beat pattern based on section count:
-  - 3 sections: hook(0.5) → climax(0.9) → resolution(0.3)
-  - 4 sections: hook(0.5) → rising(0.6) → climax(0.9) → resolution(0.3)
-  - 5 sections: hook(0.5) → rising(0.65) → valley(0.25) → climax(0.9) → resolution(0.3)
-- **Weighted archetype selection**: each beat has preferred archetypes (hook/climax favor canyon/tower, valley/resolution favor open/corridor)
-- **Difficulty modulation**: each archetype adjusts parameters based on beat difficulty (gap widths, platform sizes, ceiling height, ground coverage, step rise/run)
-- **Transition zones**: 3-tile ground at section boundaries + perch platform when difficulty delta > 0.3
-- **Pacing toggle**: `PACING_ENABLED` flag preserves old random behavior when disabled
-- **Difficulty scale**: `PACING_DIFFICULTY_SCALE` (0.5-1.5) multiplies beat difficulties for easier/harder levels
-- **Section-based terrain**: 3-5 sections per level, each an archetype (5 types):
-  - **Canyon** — ground gap with bridge platform above, upper reward platform
-  - **Tower** — vertical stack of alternating offset platforms, side approach
-  - **Open** — partial ground with gaps/raised bumps, scattered platforms at various heights
-  - **Corridor** — low ceiling with gaps, cramped lower path vs risk/reward upper path
-  - **Staircase** — ascending or descending chain of step platforms
-- **Platform personality**: mixed sizes (25% tiny 1-2 tiles, 30% medium 3-4, 45% wide 5-7+)
-- **Ground variation**: per-section ground treatment (gaps, partial, raised), transition zones at boundaries
-- **Landmarks**: 1-2 per level (tall pillars, single floating tiles, overhangs)
-- **BFS reachability validation**: removes any platform unreachable via the physics envelope
-- **Gauntlet preset**: one-click restore of the hardcoded Sanity Gauntlet map
+- **BFS reachability validation**: removes platforms unreachable from ground via physics envelope
+- **Post-processing**: findAndSetSpawn() places zombie in leftmost room, findAndSetExit() places exit in rightmost room
 
-Generator UI: Width (20-60), Height (15-35), Density (0.1-0.9), Min Sanity (1-12), Seed, Pacing toggle, Difficulty Scale (0.5-1.5)
+Generator UI: Density (0.1-0.9), Min Sanity (1-12), Seed, Room Grid / Random buttons, Level 1, Gauntlet presets
 
 ### Juice / Feedback Systems (Phase A)
 Four feedback systems that close Swink's simulation → feedback loop. Without these, movement is mechanically correct but feels "dead."
@@ -94,7 +83,7 @@ Centralized `GameState` object (Strangler Fig migration). References existing gl
 - **Phases**: PLAYING, GAME_OVER_SANITY ("MIND LOST"), GAME_OVER_HP ("GAME OVER"), LEVEL_COMPLETE ("LEVEL COMPLETE")
 - **Game loop gate**: Update systems only run when `GameState.phase === 'PLAYING'`
 - **Restart**: R key in any game-over state calls `resetGameState()`
-- **Stats tracking**: `timeElapsed`, `civiliansEaten`, `damagesTaken`, `threatsPounced`
+- **Stats tracking**: `timeElapsed`, `civiliansEaten`, `damagesTaken`, `guardsPounced`
 
 ### Health System (Sprint 1)
 - `zombie.hp` / `zombie.maxHP` (default 5)
@@ -120,42 +109,62 @@ Centralized `GameState` object (Strangler Fig migration). References existing gl
 ### Eat Collision + Death Scream (Sprint 1)
 - `aabbOverlap(a, b)` — shared AABB utility
 - `checkEatCollision(state)` — overlap → civilian dies, sanity +4 (cap 12)
-- `broadcastScream(state, x, y)` — alerts all threats within `SCREAM_ALERT_RANGE`, shake
+- `broadcastScream(state, x, y)` — alerts all guards within `SCREAM_ALERT_RANGE`, shake
 - Guard reassignment on civilian death (`assignGuards` called after eat)
 - Particle burst + screen shake on eat
 - Eating at full sanity wastes restore but still triggers scream
 
-### Threat System (Sprint 2)
-- `createThreat(x, y)` — factory returning flat data object with AI state
-- 3 threats placed on valid standing positions, spread across map
+### Guard System (Sprint 2)
+- `createGuard(x, y)` — factory returning flat data object with AI state
+- 3 guards placed on valid standing positions, spread across map
 - `areSamePlatform(a, b)` — checks continuous ground between entities
-- `assignGuards(state)` — each threat guards nearest same-platform civilian (prefer < 2 guards)
+- `assignGuards(state)` — each guard guards nearest same-platform civilian (prefer < 2 guards)
 - **AI States**:
-  - **GUARD_PATROL**: patrol within `THREAT_GUARD_RANGE` of guarded civilian (or `THREAT_PATROL_RANGE` of patrolCenter if no civilian). Follows civilian as it moves.
-  - **CHASE**: zombie within `THREAT_DETECTION_RANGE` AND threat within `THREAT_LEASH_DISTANCE` of anchor. Moves at `THREAT_CHASE_SPEED`. Breaks chase when zombie exceeds leash.
+  - **GUARD_PATROL**: patrol within `GUARD_WATCH_RANGE` of guarded civilian (or `GUARD_PATROL_RANGE` of patrolCenter if no civilian). Follows civilian as it moves.
+  - **CHASE**: zombie within `GUARD_DETECTION_RANGE` AND guard within `GUARD_LEASH_DISTANCE` of anchor. Moves at `GUARD_CHASE_SPEED`. Breaks chase when zombie exceeds leash.
   - **RESPONDING_TO_SCREAM**: highest priority. Move to alertTarget at chase speed. Timer-based, returns to GUARD_PATROL on expiry or arrival.
 - Edge avoidance: ground-ahead + wall-ahead checks (same pattern as civilians)
 - Rendered as colored rectangles ("!" label): red (patrol), magenta (chase), yellow (scream response). Cyan outline when guarding.
 
-### Threat Collision + Pounce (Sprint 2)
-- `checkThreatCollision(state)` — AABB overlap zombie ↔ threats
-- **Pounce mechanic**: at Feral (sanity < `POUNCE_SANITY_THRESHOLD`=4), touching a threat kills it — no HP loss, particle burst, strong shake
-- **Damage**: at Lucid/Slipping, touching a threat calls `damageZombie` (respects iframes)
-- `threatsPounced` stat tracked
+### Guard Collision + Pounce (Sprint 2)
+- `checkGuardCollision(state)` — AABB overlap zombie ↔ guards
+- **Pounce mechanic**: at Feral (sanity < `POUNCE_SANITY_THRESHOLD`=4), touching a guard kills it — no HP loss, particle burst, strong shake
+- **Damage**: at Lucid/Slipping, touching a guard calls `damageZombie` (respects iframes)
+- `guardsPounced` stat tracked
+
+### Level 1: "First Run" (Sprint 3)
+Purpose-built level demonstrating the complete core loop. 50×18 tiles (1600×576 canvas).
+
+- **Section A (cols 0-11): Safe Intro** — solid ground, low shelf for jump learning, free unguarded civilian
+- **Section B (cols 12-24): First Encounter** — 3-tile gap, stepping platform, guarded civilian + Guard 1
+- **Section C (cols 25-37): Vertical Tradeoff** — stepping stone to high platform (needs Slipping sanity), unguarded civilian on high platform, guarded civilian on ground + Guard 2
+- **Section D (cols 38-49): Final Push** — 3-tile gap, guarded civilian + Guard 3, exit zone
+- 5 civilians (2 unguarded, 3 guarded), 3 guards
+- Ground path always completable at any sanity — no sanity-gated jumps required to finish
+- Upper platforms are optional rewards gated behind lower sanity thresholds
+- `currentLevel` tracking: `loadLevel1()` / `loadPresetGauntlet()` set this for proper `resetGameState()` entity repopulation
+- `placeEntitiesFromLevelData(levelData)` — shared helper for placing entities from level data objects with explicit positions
+
+### Player-Facing HUD (Sprint 3)
+Canvas-drawn HUD overlaying the game, rendered in screen-space after vignette effects.
+
+- **Sanity bar**: top-left (16, 20), 160×12px, colored by tier (green=Lucid, yellow=Slipping, red=Feral)
+- **HP hearts**: below sanity bar, diamond shapes, red=filled, gray=empty
+- `renderHUD()` called at end of `render()` in screen-space
 
 ### Level Exit + Level Complete (Sprint 2)
 - `findAndSetExit()` — scans rightmost columns for valid 2-tile-high open space above ground
 - `checkExitZone(state)` — AABB overlap zombie ↔ exit zone
 - `renderExitZone()` — gold/yellow rectangle with pulsing border + "EXIT" label, drawn after tiles but before entities
-- **LEVEL_COMPLETE phase**: green overlay with stats (time, civilians eaten, HP, threats pounced). R to restart.
+- **LEVEL_COMPLETE phase**: green overlay with stats (time, civilians eaten, HP, guards pounced). R to restart.
 - Time tracking: `GameState.stats.timeElapsed += dt` in game loop
 - Exit placed on all map change events (init, reset, generate, Gauntlet)
 
 ### UI
 - **Sanity slider**: top bar, range 0-12, real-time, shows value + tier name
 - **Auto Drain checkbox**: next to slider, toggles continuous sanity drain
-- **Debug panel**: top-right overlay, monospace, shows phase/HP/civilians/threats + velocity/grounded/coyote/buffer/air control/drift
-- **Tuning panel**: collapsible left panel with sliders for all movement constants + juice params + level generator + sanity system + health + civilian AI + threat AI
+- **Debug panel**: top-right overlay, monospace, shows phase/HP/civilians/guards + velocity/grounded/coyote/buffer/air control/drift
+- **Tuning panel**: collapsible left panel with sliders for all movement constants + juice params + level generator + sanity system + health + civilian AI + guard AI
 - **Gone overlay**: "MIND LOST" text on GAME_OVER_SANITY phase
 - **HP overlay**: "GAME OVER" text (orange) on GAME_OVER_HP phase
 - **Level complete overlay**: "LEVEL COMPLETE" text (green) with stats on LEVEL_COMPLETE phase
@@ -230,10 +239,12 @@ Tier layout:
 | VIGNETTE_MAX_OPACITY | 0.25 | max vignette opacity at sanity 0 |
 | SPEED_LINE_THRESHOLD | 0.8 | fraction of max speed to show lines |
 | SPEED_LINE_OPACITY | 0.3 | max opacity of speed lines |
-| PACING_ENABLED | true | toggle (pacing vs random) |
-| PACING_DIFFICULTY_SCALE | 1.0 | multiplier (0.5-1.5) |
-| MAP_COLS | 40 (default) | tiles (mutable, 20-60) |
-| MAP_ROWS | 25 (default) | tiles (mutable, 15-35) |
+| ROOM_W | 8 | tiles per room width |
+| ROOM_H | 8 | tiles per room height |
+| GRID_COLS | 24 | rooms across |
+| GRID_ROWS | 6 | rooms down |
+| MAP_COLS | 50 (Level 1 default) | tiles (mutable) |
+| MAP_ROWS | 18 (Level 1 default) | tiles (mutable) |
 | **Sanity System** | | |
 | SANITY_DRAIN_RATE | 0.15 | sanity/s (continuous drain) |
 | SANITY_PER_EAT | 4 | sanity restored per civilian |
@@ -248,14 +259,14 @@ Tier layout:
 | CIVILIAN_FLEE_RANGE | 96 | px (flee trigger distance) |
 | CIVILIAN_SEEK_RANGE | 128 | px (placeholder for Sprint 2) |
 | CIVILIAN_WANDER_SPEED | 30 | px/s |
-| **Threat AI** | | |
-| THREAT_SPEED | 120 | px/s (patrol) |
-| THREAT_CHASE_SPEED | 200 | px/s (chase) |
-| THREAT_DAMAGE | 1 | HP per hit |
-| THREAT_DETECTION_RANGE | 160 | px (aggro range) |
-| THREAT_PATROL_RANGE | 128 | px (default patrol, no civilian) |
-| THREAT_GUARD_RANGE | 64 | px (patrol near guarded civilian) |
-| THREAT_LEASH_DISTANCE | 160 | px (max chase from anchor) |
+| **Guard AI** | | |
+| GUARD_SPEED | 120 | px/s (patrol) |
+| GUARD_CHASE_SPEED | 200 | px/s (chase) |
+| GUARD_DAMAGE | 1 | HP per hit |
+| GUARD_DETECTION_RANGE | 160 | px (aggro range) |
+| GUARD_PATROL_RANGE | 128 | px (default patrol, no civilian) |
+| GUARD_WATCH_RANGE | 64 | px (patrol near guarded civilian) |
+| GUARD_LEASH_DISTANCE | 160 | px (max chase from anchor) |
 | POUNCE_SANITY_THRESHOLD | 4 | sanity below which pounce active |
 
 ## File Structure
@@ -273,7 +284,7 @@ docs/
   FEEDBACK_MATRIX.md — Movement feedback audit
   SANITY_BALANCE_REPORT.md — Sanity system balance analysis
   CORE_LOOP_SPEC.md — Core game loop mechanic spec
-  CIVILIAN_ECOLOGY_SPEC.md — Civilian-threat ecology design
+  CIVILIAN_ECOLOGY_SPEC.md — Civilian-guard ecology design
   CIVILIAN_VARIANTS_SPEC.md — Civilian variant types (stretch goal)
   ARCHITECTURE_REFACTOR.md — Architecture refactor plan (GameState, entities, phases, migration)
 handoff/            — Inter-window communication (gitignored)

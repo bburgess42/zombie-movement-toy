@@ -293,7 +293,7 @@ Post-implementation, these are the most impactful knobs:
 | DRIFT_MAX_INTERVAL | How rare drift is at high sanity | Longer free zone (more generous) | Earlier drift onset (more punishing) |
 | DRIFT_MIN_INTERVAL | How frequent drift is at sanity 0 | Less frequent (more manageable) | Constant barrage (overwhelming) |
 | Impulse curve exponent (²) | How fast drift ramps up | Gentle start, explosive end | Linear ramp (more predictable) |
-| DRIFT_AIRBORNE_MULT | Airborne terror factor | Jumping becomes very risky | Jumping is safe, ground drift is the threat |
+| DRIFT_AIRBORNE_MULT | Airborne terror factor | Jumping becomes very risky | Jumping is safe, ground drift is the guard |
 | FERAL_INPUT_DELAY | Direction reversal resistance | More committed movement | More responsive movement |
 
 ---

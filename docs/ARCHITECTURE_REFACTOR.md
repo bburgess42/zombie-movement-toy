@@ -45,7 +45,7 @@
 
 **What works:** The comment-banner sections create clear visual navigation (18 sections, well-named). The update order in `gameLoop()` is correct and well-documented. Constants at the top make tuning easy. The tuning panel's `eval()`-based approach requires globals to stay as bare `let` variables.
 
-**What doesn't work for the game:** State is scattered across 7+ top-level objects with no defined ownership. Adding civilians, threats, game phases, and health means more globals, more implicit dependencies, and no way to serialize/restore state. Every new system would read and write globals directly, creating invisible coupling.
+**What doesn't work for the game:** State is scattered across 7+ top-level objects with no defined ownership. Adding civilians, guards, game phases, and health means more globals, more implicit dependencies, and no way to serialize/restore state. Every new system would read and write globals directly, creating invisible coupling.
 
 ### Target Architecture
 
@@ -66,7 +66,7 @@
 │  │  .phase      — TITLE | PLAYING | ...        │                    │
 │  │  .zombie     — position, vel, hp, sanity    │                    │
 │  │  .sanity     — { value, max, drainRate, ... }│                    │
-│  │  .entities   — { civilians: [], threats: [] }│                    │
+│  │  .entities   — { civilians: [], guards: [] }│                    │
 │  │  .level      — { tileMap, cols, rows, ... } │                    │
 │  │  .stats      — { timeElapsed, eaten, ... }  │                    │
 │  └──────────┬─────────────────────────────────┘                    │
@@ -80,12 +80,12 @@
 │  │  updateSanityDrain(state, dt)  — continuous drain            │  │
 │  │  updateHealth(state)       — HP checks → phase change        │  │
 │  │  updateCivilians(state, dt)    — flee/seek/wander AI         │  │
-│  │  updateThreats(state, dt)      — guard/chase/scream AI       │  │
+│  │  updateGuards(state, dt)      — guard/chase/scream AI       │  │
 │  │  updatePhysics(state, dt)      — zombie movement (existing)  │  │
 │  │  updateDrift(state, dt)        — drift system (existing)     │  │
 │  │  updateJuice(state, dt)        — particles/shake (existing)  │  │
 │  │  checkEatCollision(state)      — zombie↔civilian overlap     │  │
-│  │  checkThreatCollision(state)   — zombie↔threat overlap       │  │
+│  │  checkGuardCollision(state)   — zombie↔guard overlap       │  │
 │  │  broadcastScream(state, x, y)  — direct function call        │  │
 │  └──────────────────────────────────────────────────────────────┘  │
 │             │                                                       │
@@ -106,7 +106,7 @@
 
 **Architecture Style:** Centralized `GameState` object + namespaced system functions. Same single file with explicit state ownership and system boundaries.
 
-**Why this architecture:** The game needs serializable state (for save/load), clear phase management (5 game phases), and entity management (civilians + threats). A centralized GameState gives all three without introducing modules, classes, or build tools. System functions receive state as a parameter instead of reading globals, making data flow explicit. Constants stay as top-level `let` because the tuning panel's `eval()` depends on it. Runtime-only state (input, camera, particles) stays separate since it's never serialized and is re-created each frame or on reset.
+**Why this architecture:** The game needs serializable state (for save/load), clear phase management (5 game phases), and entity management (civilians + guards). A centralized GameState gives all three without introducing modules, classes, or build tools. System functions receive state as a parameter instead of reading globals, making data flow explicit. Constants stay as top-level `let` because the tuning panel's `eval()` depends on it. Runtime-only state (input, camera, particles) stays separate since it's never serialized and is re-created each frame or on reset.
 
 ---
 
@@ -119,8 +119,8 @@
 | **Sanity System** | Continuous drain, tier helpers, restore on eat. The core tension mechanic. | `updateSanityDrain(state, dt)`, `getSanityT()`, `getMaxSpeed()`, etc. | GameState.sanity, constants |
 | **Health System** | HP tracking, damage with invincibility frames, death check. | `damageZombie(state, amount)`, `updateHealth(state)` | GameState.zombie.hp, GameState.phase |
 | **Civilian System** | Civilian entity management, flee/seek/wander AI, edge avoidance, eat collision. | `updateCivilians(state, dt)`, `checkEatCollision(state)`, `createCivilian(x, y)` | GameState.entities.civilians, GameState.zombie |
-| **Threat System** | Threat entity management, guard patrol, chase, scream response, tile collision. | `updateThreats(state, dt)`, `checkThreatCollision(state)`, `createThreat(x, y)` | GameState.entities.threats, GameState.entities.civilians, GameState.zombie |
-| **Death Scream** | Broadcasts scream event when civilian is eaten. Alerts threats within range. | `broadcastScream(state, x, y)` — direct function call, not event bus | GameState.entities.threats |
+| **Guard System** | Guard entity management, guard patrol, chase, scream response, tile collision. | `updateGuards(state, dt)`, `checkGuardCollision(state)`, `createGuard(x, y)` | GameState.entities.guards, GameState.entities.civilians, GameState.zombie |
+| **Death Scream** | Broadcasts scream event when civilian is eaten. Alerts guardswithin range. | `broadcastScream(state, x, y)` — direct function call, not event bus | GameState.entities.guards |
 | **Level System** | Tile map, entrance/exit zones, level loading. Wraps existing generator. | `GameState.level`, `applyLevel()`, `generateLevel()` | Existing generator code |
 | **Drift System** (existing) | Smooth impulses that push zombie off-course. Scales with sanity. | `updateDrift(state, dt)` | GameState.zombie, GameState.sanity, constants |
 | **Juice Systems** (existing) | Squash/stretch, particles, screen shake, vignette, speed lines. | `updateJuice(dt)`, `emitDust()`, `triggerShake()`, render helpers | particles, camera (runtime-only) |
@@ -156,22 +156,22 @@
 4. Sanity restored: state.sanity.value += SANITY_PER_EAT (capped at max)
 5. Stats updated: state.stats.civiliansEaten++
 6. broadcastScream(state, civilian.x, civilian.y) called directly:
-   a. Iterate state.entities.threats
-   b. For each threat: distance check from scream position
+   a. Iterate state.entities.guards
+   b. For each guard: distance check from scream position
    c. If within SCREAM_ALERT_RANGE:
-      - Set threat.state = 'RESPONDING_TO_SCREAM'
-      - Set threat.alertTarget = { x, y }
-      - Set threat.alertTimer = SCREAM_ALERT_DURATION
+      - Set guard.state = 'RESPONDING_TO_SCREAM'
+      - Set guard.alertTarget = { x, y }
+      - Set guard.alertTimer = SCREAM_ALERT_DURATION
 7. Visual feedback: scream indicator, civilian disappears
-8. Guard reassignment: threat whose civilian died → assign nearest remaining civilian
+8. Guard reassignment: guard whose civilian died → assign nearest remaining civilian
 ```
 
-### Threat Damage Flow (New)
+### Guard Damage Flow (New)
 
 ```
-1. checkThreatCollision(state) runs AABB overlap: zombie vs each threat
+1. checkGuardCollision(state) runs AABB overlap: zombie vs each guard
 2. If overlap AND zombie.invincibleTimer <= 0:
-   a. zombie.hp -= THREAT_DAMAGE
+   a. zombie.hp -= GUARD_DAMAGE
    b. zombie.invincibleTimer = INVINCIBILITY_DURATION
    c. Visual feedback: flash, shake
 3. updateHealth(state) checks zombie.hp:
@@ -189,7 +189,7 @@ updateGamePhase(state) runs each frame:
     - Wait for Enter key → state.phase = 'PLAYING', reset all game state
 
   PLAYING:
-    - All update systems run (physics, sanity, civilians, threats, etc.)
+    - All update systems run (physics, sanity, civilians, guards, etc.)
     - After updates, check end conditions:
       1. zombie.hp <= 0 → state.phase = 'GAME_OVER_HP'     (checked first)
       2. state.sanity.value <= 0 → state.phase = 'GAME_OVER_SANITY'
@@ -269,7 +269,7 @@ let GameState = {
 
     entities: {
         civilians: [],        // flat data objects from createCivilian()
-        threats: []           // flat data objects from createThreat()
+        guards: []           // flat data objects from createGuard()
     },
 
     level: {
@@ -338,10 +338,10 @@ function getSerializableState() {
 | Data | Owner | Modified By | Read By |
 |------|-------|------------|---------|
 | `GameState.phase` | Game Phase Machine | `updateGamePhase()` | All systems (gating), render |
-| `GameState.zombie.*` | Zombie Controller | `updatePhysics()`, `updateJump()`, `updateDrift()`, `damageZombie()` | Civilian AI (flee range), threat AI (detection), render |
+| `GameState.zombie.*` | Zombie Controller | `updatePhysics()`, `updateJump()`, `updateDrift()`, `damageZombie()` | Civilian AI (flee range), guardAI (detection), render |
 | `GameState.sanity.*` | Sanity System | `updateSanityDrain()`, `checkEatCollision()` | Movement helpers (`getSanityT()`), drift, render |
-| `GameState.entities.civilians[]` | Civilian System | `updateCivilians()`, `checkEatCollision()` | Threat AI (guard assignment), render |
-| `GameState.entities.threats[]` | Threat System | `updateThreats()`, `broadcastScream()` | Zombie collision, render |
+| `GameState.entities.civilians[]` | Civilian System | `updateCivilians()`, `checkEatCollision()` | Guard AI (guard assignment), render |
+| `GameState.entities.guards[]` | Guard System | `updateGuards()`, `broadcastScream()` | Zombie collision, render |
 | `GameState.level.*` | Level System | `applyLevel()`, `generateLevel()` | Collision detection, render, entity placement |
 | `GameState.stats.*` | Stats Tracking | Various (on events) | Level Complete overlay, render |
 | `input` | Input System | `processInput()`, keydown/keyup | Physics, jump |
@@ -365,7 +365,7 @@ The existing comment-banner convention is already clear and well-maintained (18 
 | **HEALTH** | Sanity Drain | `damageZombie(state, amount)`, `updateHealth(state)` |
 | **CIVILIAN SYSTEM** | Health | `createCivilian(x, y)`, `updateCivilians(state, dt)` |
 | **EAT + DEATH SCREAM** | Civilian System | `checkEatCollision(state)`, `broadcastScream(state, x, y)` |
-| **THREAT SYSTEM** | Eat + Death Scream | `createThreat(x, y)`, `updateThreats(state, dt)`, `checkThreatCollision(state)` |
+| **GUARD SYSTEM** | Eat + Death Scream | `createGuard(x, y)`, `updateGuards(state, dt)`, `checkGuardCollision(state)` |
 | **LEVEL ZONES** | Level Generator | `checkExitZone(state)`, entrance/exit rendering |
 
 ### Convention: State as Parameter
@@ -382,7 +382,7 @@ function updateSanityDrain(state, dt) {
 function updateCivilians(state, dt) {
     for (const civ of state.entities.civilians) {
         if (!civ.alive) continue;
-        // AI logic using state.zombie for flee distance, state.entities.threats for seek
+        // AI logic using state.zombie for flee distance, state.entities.guards for seek
     }
 }
 ```
@@ -399,12 +399,12 @@ eval(name)           // read
 eval(name + ' = ' + value)  // write
 ```
 
-Constants MUST remain as top-level `let` variables. New game system constants (e.g., `SANITY_DRAIN_RATE`, `THREAT_SPEED`, `CIVILIAN_FLEE_SPEED`) follow the same convention and are added to the tuning panel.
+Constants MUST remain as top-level `let` variables. New game system constants (e.g., `SANITY_DRAIN_RATE`, `GUARD_SPEED`, `CIVILIAN_FLEE_SPEED`) follow the same convention and are added to the tuning panel.
 
 ### What We Are NOT Doing
 
 - **No IIFE modules** — adds indirection with zero benefit in a single-file context
-- **No ES6 classes** — Rule of Three not met (zombie, civilian, and threat have very different field sets; a shared Entity base class would be premature abstraction)
+- **No ES6 classes** — Rule of Three not met (zombie, civilian, and guardhave very different field sets; a shared Entity base class would be premature abstraction)
 - **No inheritance** — flat data objects with factory functions instead
 - **No event bus** — only one event type exists (death scream). Direct function call is simpler and traceable. Upgrade to event bus IF/WHEN a second event type is needed (Rule of Three)
 - **No module bundler/build step** — the single-file constraint is a feature for distribution and portability
@@ -427,11 +427,11 @@ function createCivilian(x, y) {
         vx: 0,
         alive: true,
         state: 'WANDER',   // WANDER | FLEE | SEEK
-        guardedBy: null     // reference to threat guarding this civilian (or null)
+        guardedBy: null     // reference to guard guarding this civilian (or null)
     };
 }
 
-function createThreat(x, y) {
+function createGuard(x, y) {
     return {
         x: x, y: y,
         width: 32, height: 32,
@@ -464,11 +464,11 @@ function aabbOverlap(a, b) {
 }
 ```
 
-Used for: zombie↔civilian (eat), zombie↔threat (damage), zombie↔exit zone (level complete).
+Used for: zombie↔civilian (eat), zombie↔guard (damage), zombie↔exit zone (level complete).
 
 ### Simplified Tile Collision for NPCs
 
-Civilians and threats need basic tile collision but much simpler than the zombie's system:
+Civilians and guardsneed basic tile collision but much simpler than the zombie's system:
 - **Ground check ahead:** Is there a solid tile below the next step position? If not, reverse direction (don't walk off ledges).
 - **Wall check ahead:** Is there a solid tile at head height in the movement direction? If yes, reverse direction.
 - No gravity (entities stay on their platform — they don't jump or fall).
@@ -500,14 +500,14 @@ Only one event type exists in v1: the death scream. Using an event bus for a sin
 
 ```javascript
 function broadcastScream(state, x, y) {
-    for (const threat of state.entities.threats) {
-        const dx = threat.x - x;
-        const dy = threat.y - y;
+    for (const guard of state.entities.guards) {
+        const dx = guard.x - x;
+        const dy = guard.y - y;
         const dist = Math.sqrt(dx * dx + dy * dy);
         if (dist <= SCREAM_ALERT_RANGE) {
-            threat.state = 'RESPONDING_TO_SCREAM';
-            threat.alertTarget = { x: x, y: y };
-            threat.alertTimer = SCREAM_ALERT_DURATION;
+            guard.state = 'RESPONDING_TO_SCREAM';
+            guard.alertTarget = { x: x, y: y };
+            guard.alertTimer = SCREAM_ALERT_DURATION;
         }
     }
 }
@@ -531,7 +531,7 @@ GameState.phase = 'TITLE';  // one of 5 values
 - **TITLE** — Title screen overlay. Game loop runs but no update systems. Wait for Enter.
 - **PLAYING** — All update systems active. The main gameplay state.
 - **LEVEL_COMPLETE** — Overlay with stats. Game loop runs (for rendering). Wait for Enter/R.
-- **GAME_OVER_HP** — "GAME OVER" overlay. Zombie died from threat damage. Wait for R.
+- **GAME_OVER_HP** — "GAME OVER" overlay. Zombie died from guarddamage. Wait for R.
 - **GAME_OVER_SANITY** — "MIND LOST" overlay. Sanity hit 0. Absorbs existing Gone overlay. Wait for R.
 
 ### Phase Update Function
@@ -580,9 +580,9 @@ function gameLoop(currentTime) {
         updatePhysics(GameState, dt);
         // ... collision, jump, drift, juice ...
         updateCivilians(GameState, dt);
-        updateThreats(GameState, dt);
+        updateGuards(GameState, dt);
         checkEatCollision(GameState);
-        checkThreatCollision(GameState);
+        checkGuardCollision(GameState);
     }
 
     updateGamePhase(GameState);  // always runs — handles transitions + input in non-PLAYING phases
@@ -634,7 +634,7 @@ let GameState = {
     },
     entities: {
         civilians: [],
-        threats: []
+        guards: []
     },
     level: {
         tileMap: tileMap,     // reference to existing global
@@ -707,43 +707,43 @@ let GameState = {
 
 - Add `checkEatCollision(state)` — AABB overlap zombie ↔ civilians
 - On eat: civilian.alive = false, state.sanity.value += SANITY_PER_EAT (capped), state.stats.civiliansEaten++
-- Add `broadcastScream(state, x, y)` — iterates threats, distance-checks, sets alert state
-- (Scream fires but no threats exist yet to respond — that's fine)
+- Add `broadcastScream(state, x, y)` — iterates guards, distance-checks, sets alert state
+- (Scream fires but no guardsexist yet to respond — that's fine)
 - Add `SANITY_PER_EAT`, `SCREAM_ALERT_RANGE`, `SCREAM_ALERT_DURATION` to tuning panel
 
 **Verification:** Walk into civilian → civilian disappears, sanity increases (visible on slider). Scream fires (log or visual indicator). Eating at sanity 12 still consumes civilian (waste case).
 
-### Step 7: Add Threat Entities + Guard Patrol
+### Step 7: Add Guard Entities + Guard Patrol
 
-- Add `createThreat(x, y)` factory function
-- Add `updateThreats(state, dt)` with GUARD_PATROL state
-- Guard patrol: threat patrols within `THREAT_GUARD_RANGE` of assigned civilian
-- Guard assignment at level load: each threat → nearest same-platform civilian
-- Add simplified tile collision for threats (ground-check-ahead, wall-check-ahead)
-- Render threats as red rectangles with "!" label
-- Place 3 test threats on the Gauntlet map
-- Add threat constants to tuning panel
+- Add `createGuard(x, y)` factory function
+- Add `updateGuards(state, dt)` with GUARD_PATROL state
+- Guard patrol: guard patrols within `GUARD_WATCH_RANGE` of assigned civilian
+- Guard assignment at level load: each guard→ nearest same-platform civilian
+- Add simplified tile collision for guards(ground-check-ahead, wall-check-ahead)
+- Render guardsas red rectangles with "!" label
+- Place 3 test guardson the Gauntlet map
+- Add guardconstants to tuning panel
 
-**Verification:** Red rectangles patrol near blue civilian rectangles. Threats reverse at edges and walls. No chase or damage yet.
+**Verification:** Red rectangles patrol near blue civilian rectangles. Guards reverse at edges and walls. No chase or damage yet.
 
-### Step 8: Add Threat Chase + Scream Response
+### Step 8: Add Guard Chase + Scream Response
 
-- Add CHASE state: when zombie within `THREAT_DETECTION_RANGE` AND within `THREAT_LEASH_DISTANCE`, chase at `THREAT_CHASE_SPEED`
+- Add CHASE state: when zombie within `GUARD_DETECTION_RANGE` AND within `GUARD_LEASH_DISTANCE`, chase at `GUARD_CHASE_SPEED`
 - Add RESPONDING_TO_SCREAM state: move to scream location, timer-based
 - Chase breaks when zombie exceeds leash distance → return to guard
 - Scream response overrides chase
-- Guard reassignment: when guarded civilian is eaten, threat reassigns to nearest remaining civilian
+- Guard reassignment: when guarded civilian is eaten, guardreassigns to nearest remaining civilian
 
-**Verification:** Approach a threat → it chases. Run away far enough → it returns to guard. Eat a civilian near a threat → threat responds to scream, moves to eat location. After alert timer → returns to guard.
+**Verification:** Approach a guard→ it chases. Run away far enough → it returns to guard. Eat a civilian near a guard→ guardresponds to scream, moves to eat location. After alert timer → returns to guard.
 
-### Step 9: Add Threat Damage Collision
+### Step 9: Add Guard Damage Collision
 
-- Add `checkThreatCollision(state)` — AABB overlap zombie ↔ threats
-- On overlap + not invincible: call `damageZombie(state, THREAT_DAMAGE)`
+- Add `checkGuardCollision(state)` — AABB overlap zombie ↔ guards
+- On overlap + not invincible: call `damageZombie(state, GUARD_DAMAGE)`
 - Invincibility frames: zombie flashes during `invincibleTimer > 0`
-- Multiple overlapping threats during iframes → no additional damage
+- Multiple overlapping guardsduring iframes → no additional damage
 
-**Verification:** Touch a threat → HP decreases, zombie flashes. Touch again during iframes → no damage. HP reaches 0 → "GAME OVER" overlay.
+**Verification:** Touch a guard→ HP decreases, zombie flashes. Touch again during iframes → no damage. HP reaches 0 → "GAME OVER" overlay.
 
 ### Step 10: Add Level Entrance/Exit
 
@@ -780,9 +780,9 @@ let GameState = {
 | 4 | GAME_OVER_HP phase | ~20 lines | Low — extends step 1 |
 | 5 | Civilian entities + AI | ~150 lines | Medium — new AI code |
 | 6 | Eat + death scream | ~40 lines | Low — collision + function call |
-| 7 | Threat entities + guard patrol | ~150 lines | Medium — new AI code |
+| 7 | Guard entities + guard patrol | ~150 lines | Medium — new AI code |
 | 8 | Chase + scream response | ~80 lines | Medium — AI state transitions |
-| 9 | Threat damage collision | ~30 lines | Low — uses existing health system |
+| 9 | Guard damage collision | ~30 lines | Low — uses existing health system |
 | 10 | Level entrance/exit + title | ~60 lines | Low — UI overlays |
 | 11 | Final global migration | ~0 new (refactor) | Medium — many reference changes |
 
@@ -831,7 +831,7 @@ Only if levels exceed 5 minutes each (per SCOPE_V1.md). With 3 short levels, ses
 
 ### Performance
 
-**Not a concern.** The target entity count is ~8 (1 zombie + 5 civilians + 3 threats) on a 40x25 tile grid. Canvas 2D rendering at 60fps handles this trivially. No spatial partitioning needed. No object pooling needed. Linear iteration over entity arrays is fine.
+**Not a concern.** The target entity count is ~8 (1 zombie + 5 civilians + 3 guards) on a 40x25 tile grid. Canvas 2D rendering at 60fps handles this trivially. No spatial partitioning needed. No object pooling needed. Linear iteration over entity arrays is fine.
 
 **When it might become a concern:** If entity count exceeds ~50 (e.g., swarm mode), or if particle count exceeds ~200. Neither is planned for v1.
 
@@ -839,14 +839,14 @@ Only if levels exceed 5 minutes each (per SCOPE_V1.md). With 3 short levels, ses
 
 | Category | Convention | Examples |
 |----------|-----------|----------|
-| Constants | `UPPER_SNAKE_CASE` | `BASE_MAX_SPEED`, `THREAT_CHASE_SPEED`, `SANITY_PER_EAT` |
+| Constants | `UPPER_SNAKE_CASE` | `BASE_MAX_SPEED`, `GUARD_CHASE_SPEED`, `SANITY_PER_EAT` |
 | Functions | `camelCase`, verb-first | `updatePhysics()`, `createCivilian()`, `checkEatCollision()`, `broadcastScream()` |
 | Variables | `camelCase` | `zombie`, `sanity`, `tileMap`, `alertTimer` |
 | Entity states | `UPPER_SNAKE_CASE` strings | `'GUARD_PATROL'`, `'CHASE'`, `'RESPONDING_TO_SCREAM'`, `'WANDER'`, `'FLEE'` |
 | Game phases | `UPPER_SNAKE_CASE` strings | `'TITLE'`, `'PLAYING'`, `'LEVEL_COMPLETE'`, `'GAME_OVER_HP'` |
-| Factory functions | `create` + noun | `createCivilian()`, `createThreat()` |
-| Update functions | `update` + system | `updatePhysics()`, `updateCivilians()`, `updateThreats()` |
-| Check functions | `check` + what | `checkEatCollision()`, `checkThreatCollision()`, `checkExitZone()` |
+| Factory functions | `create` + noun | `createCivilian()`, `createGuard()` |
+| Update functions | `update` + system | `updatePhysics()`, `updateCivilians()`, `updateGuards()` |
+| Check functions | `check` + what | `checkEatCollision()`, `checkGuardCollision()`, `checkExitZone()` |
 | Boolean queries | `is`/`has` prefix | `isSolid()`, `hasGroundAhead()`, `hasWallAhead()` |
 
 ### Comment Convention
@@ -862,7 +862,7 @@ Only if levels exceed 5 minutes each (per SCOPE_V1.md). With 3 short levels, ses
 
 | Date | Version | Change | Reason |
 |------|---------|--------|--------|
-| Feb 2026 | 1.0 | Initial refactor plan | Pre-Sprint 1 architecture evaluation. Defines GameState consolidation, entity system design, game phase machine, and 12-step migration plan for supporting core loop, civilian ecology, and threat systems. |
+| Feb 2026 | 1.0 | Initial refactor plan | Pre-Sprint 1 architecture evaluation. Defines GameState consolidation, entity system design, game phase machine, and 12-step migration plan for supporting core loop, civilian ecology, and guardsystems. |
 
 ---
 

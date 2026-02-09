@@ -363,9 +363,6 @@ let PARTICLE_GRAVITY = 100;             // px/s² downward on dust particles
 let VIGNETTE_MAX_OPACITY = 0.25;        // max vignette opacity at sanity 0
 let SPEED_LINE_THRESHOLD = 0.8;         // fraction of max speed to start showing lines
 let SPEED_LINE_OPACITY = 0.3;           // max opacity of speed lines
-let PACING_ENABLED = true;
-let PACING_DIFFICULTY_SCALE = 1.0;      // 0.5=easier, 1.5=harder
-
 // --- Sanity drain ---
 let SANITY_DRAIN_RATE = 0.15;           // sanity lost per second (continuous)
 
@@ -377,22 +374,22 @@ let INVINCIBILITY_DURATION = 0.75;     // seconds of iframes after taking damage
 // --- Civilian system ---
 let CIVILIAN_FLEE_SPEED = 60;          // px/s — flee movement speed
 let CIVILIAN_FLEE_RANGE = 96;          // px — distance at which civilian begins fleeing
-let CIVILIAN_SEEK_RANGE = 128;         // px — distance within which civilian drifts toward threat (placeholder)
+let CIVILIAN_SEEK_RANGE = 128;         // px — distance within which civilian drifts toward guard (placeholder)
 let CIVILIAN_WANDER_SPEED = 30;        // px/s — idle movement speed
 
 // --- Eat + death scream ---
 let SANITY_PER_EAT = 4;               // sanity restored per civilian eaten
 let SCREAM_ALERT_RANGE = 128;          // px — death scream alert radius
-let SCREAM_ALERT_DURATION = 3.0;       // seconds — threat investigation time
+let SCREAM_ALERT_DURATION = 3.0;       // seconds — guard investigation time
 
-// --- Threat system ---
-let THREAT_SPEED = 120;                // px/s — patrol movement speed
-let THREAT_CHASE_SPEED = 200;          // px/s — chase movement speed
-let THREAT_DAMAGE = 1;                 // HP per hit
-let THREAT_DETECTION_RANGE = 160;      // px — aggro range
-let THREAT_PATROL_RANGE = 128;         // px — default patrol (no civilian)
-let THREAT_GUARD_RANGE = 64;           // px — patrol radius around guarded civilian
-let THREAT_LEASH_DISTANCE = 160;       // px — max chase distance from guarded civilian
+// --- Guard system ---
+let GUARD_SPEED = 120;                // px/s — patrol movement speed
+let GUARD_CHASE_SPEED = 200;          // px/s — chase movement speed
+let GUARD_DAMAGE = 1;                 // HP per hit
+let GUARD_DETECTION_RANGE = 160;      // px — aggro range
+let GUARD_PATROL_RANGE = 128;         // px — default patrol (no civilian)
+let GUARD_WATCH_RANGE = 64;           // px — patrol radius around guarded civilian
+let GUARD_LEASH_DISTANCE = 160;       // px — max chase distance from guarded civilian
 let POUNCE_SANITY_THRESHOLD = 4;       // sanity below which pounce is active (Feral boundary)
 
 // ============================================================
@@ -421,8 +418,8 @@ let POUNCE_SANITY_THRESHOLD = 4;       // sanity below which pounce is active (F
 // ============================================================
 
 const TILE_SIZE = 32;
-let MAP_COLS = 40;
-let MAP_ROWS = 25;
+let MAP_COLS = 50;
+let MAP_ROWS = 18;
 
 const PRESET_GAUNTLET = [
     '........................................', // row 0
@@ -452,7 +449,507 @@ const PRESET_GAUNTLET = [
     '========================================', // row 24 Ground (runway)
 ];
 
-let MAP_DATA = [...PRESET_GAUNTLET];
+// ============================================================
+// LEVEL 1: "First Run"
+// Purpose-built level demonstrating the complete core loop.
+// Ground path always completable at any sanity. Upper platforms
+// are optional rewards gated behind lower sanity thresholds.
+// 50 × 18 tiles (1600 × 576 canvas)
+// ============================================================
+const LEVEL_1 = {
+    name: 'Level 1',
+    cols: 50,
+    rows: 18,
+    map: [
+        '==================================================', // row 0  ceiling
+        '..................................................', // row 1
+        '..................................................', // row 2
+        '..................................................', // row 3
+        '..................................................', // row 4
+        '..................................................', // row 5
+        '..................................................', // row 6
+        '..................................................', // row 7
+        '..................................................', // row 8
+        '.........................===.=====................', // row 9  HIGH platform
+        '..................................................', // row 10
+        '..................................................', // row 11
+        '..................................................', // row 12
+        '...............=====.===..........................', // row 13 stepping stones
+        '....===..................................===......', // row 14 low shelves
+        '..................................................', // row 15
+        '..................................................', // row 16
+        '============...=================...===...=========', // row 17 ground with 3 gaps
+    ],
+    civilians: [
+        { col: 7,  row: 17 },  // Unguarded, free eat (Section A)
+        { col: 20, row: 17 },  // Guarded by Guard 1 (Section B)
+        { col: 31, row: 9  },  // Unguarded, high platform (Section C)
+        { col: 36, row: 17 },  // Guarded by Guard 2 (Section C)
+        { col: 44, row: 17 },  // Guarded by Guard 3 (Section D)
+    ],
+    guards: [
+        { col: 21, row: 17 },  // Guards Civilian 2
+        { col: 35, row: 17 },  // Guards Civilian 4
+        { col: 45, row: 17 },  // Guards Civilian 5
+    ],
+};
+
+// ============================================================
+// ROOM-GRID LEVEL GENERATOR (Spelunky-style)
+// Hand-designed room templates arranged procedurally on a grid.
+// Critical path from left to right with vertical diversions.
+// ============================================================
+
+const ROOM_W = 12;    // tiles per room width
+const ROOM_H = 12;    // tiles per room height
+const GRID_COLS = 10; // rooms across
+const GRID_ROWS = 4;  // rooms down
+
+const ROOM_TEMPLATES = [
+    // 12x12 rooms. Connection zones (enforced post-stamp):
+    //   Left:   cols 0-2, rows 6-10 empty, row 11 solid (3 wide × 5 tall)
+    //   Right:  cols 9-11, rows 6-10 empty, row 11 solid (3 wide × 5 tall)
+    //   Top:    rows 0-1, cols 3-8 empty + row 2 ledges at cols 3 & 8
+    //   Bottom: rows 10-11, cols 3-8 empty
+
+    // --- L+R rooms (horizontal traversal) ---
+    {
+        id: 'flat_ground',
+        tiles: [
+            '============',
+            '............',
+            '............',
+            '............',
+            '......====..',
+            '............',
+            '............',
+            '..====......',
+            '............',
+            '............',
+            '............',
+            '============',
+        ],
+        connections: { left: true, right: true, top: false, bottom: false },
+        difficulty: 1,
+    },
+    {
+        id: 'gap_jump',
+        tiles: [
+            '============',
+            '............',
+            '............',
+            '............',
+            '............',
+            '........===.',
+            '............',
+            '............',
+            '....===.....',
+            '............',
+            '............',
+            '======.=====',
+        ],
+        connections: { left: true, right: true, top: false, bottom: false },
+        difficulty: 1,
+    },
+    {
+        id: 'platforms_up',
+        tiles: [
+            '============',
+            '............',
+            '..======....',
+            '............',
+            '............',
+            '........====',
+            '............',
+            '....====....',
+            '............',
+            '............',
+            '............',
+            '==..========',
+        ],
+        connections: { left: true, right: true, top: false, bottom: false },
+        difficulty: 2,
+    },
+    {
+        id: 'corridor_low',
+        tiles: [
+            '============',
+            '............',
+            '............',
+            '............',
+            '............',
+            '............',
+            '=====..=====',
+            '............',
+            '............',
+            '............',
+            '............',
+            '============',
+        ],
+        connections: { left: true, right: true, top: false, bottom: false },
+        difficulty: 1,
+    },
+    {
+        id: 'zigzag',
+        tiles: [
+            '============',
+            '............',
+            '............',
+            '..........==',
+            '............',
+            '......====..',
+            '............',
+            '..====......',
+            '............',
+            '==..........',
+            '............',
+            '============',
+        ],
+        connections: { left: true, right: true, top: false, bottom: false },
+        difficulty: 2,
+    },
+    // --- L+T rooms (enter left, climb to top exit) ---
+    {
+        id: 'climb_exit_top',
+        tiles: [
+            '===......===',
+            '....====....',
+            '............',
+            '..====......',
+            '............',
+            '............',
+            '........====',
+            '............',
+            '....====....',
+            '............',
+            '............',
+            '============',
+        ],
+        connections: { left: true, right: false, top: true, bottom: false },
+        difficulty: 2,
+    },
+    // --- L+B rooms (enter left, drop through floor) ---
+    {
+        id: 'drop_exit_bottom',
+        tiles: [
+            '============',
+            '............',
+            '............',
+            '............',
+            '....====....',
+            '............',
+            '............',
+            '............',
+            '............',
+            '............',
+            '............',
+            '===......===',
+        ],
+        connections: { left: true, right: false, top: false, bottom: true },
+        difficulty: 1,
+    },
+    // --- B+R rooms (land from above, exit right) ---
+    {
+        id: 'enter_from_above',
+        tiles: [
+            '============',
+            '............',
+            '............',
+            '......====..',
+            '............',
+            '............',
+            '..====......',
+            '............',
+            '............',
+            '........====',
+            '............',
+            '===......===',
+        ],
+        connections: { left: false, right: true, top: false, bottom: true },
+        difficulty: 2,
+    },
+    // --- T+R rooms (climb up from below, exit right) ---
+    {
+        id: 'enter_from_below',
+        tiles: [
+            '===......===',
+            '....====....',
+            '............',
+            '..====......',
+            '............',
+            '............',
+            '........====',
+            '............',
+            '............',
+            '............',
+            '............',
+            '============',
+        ],
+        connections: { left: false, right: true, top: true, bottom: false },
+        difficulty: 2,
+    },
+    // --- T+B rooms (vertical pass-through) ---
+    {
+        id: 'vertical_shaft',
+        tiles: [
+            '===......===',
+            '....====....',
+            '............',
+            '..==....==..',
+            '............',
+            '............',
+            '....====....',
+            '............',
+            '............',
+            '..==....==..',
+            '............',
+            '===......===',
+        ],
+        connections: { left: false, right: false, top: true, bottom: true },
+        difficulty: 1,
+    },
+    // --- L+R+T rooms ---
+    {
+        id: 'corridor_top_exit',
+        tiles: [
+            '===......===',
+            '....====....',
+            '............',
+            '..====......',
+            '............',
+            '............',
+            '........====',
+            '............',
+            '....====....',
+            '............',
+            '............',
+            '============',
+        ],
+        connections: { left: true, right: true, top: true, bottom: false },
+        difficulty: 2,
+    },
+    // --- L+R+B rooms ---
+    {
+        id: 'corridor_bottom_exit',
+        tiles: [
+            '============',
+            '............',
+            '............',
+            '..====......',
+            '............',
+            '............',
+            '........====',
+            '............',
+            '............',
+            '............',
+            '............',
+            '===......===',
+        ],
+        connections: { left: true, right: true, top: false, bottom: true },
+        difficulty: 2,
+    },
+    {
+        id: 'wide_bottom_entry',
+        tiles: [
+            '============',
+            '............',
+            '............',
+            '............',
+            '....======..',
+            '............',
+            '............',
+            '............',
+            '............',
+            '............',
+            '............',
+            '===......===',
+        ],
+        connections: { left: true, right: true, top: false, bottom: true },
+        difficulty: 1,
+    },
+    // --- L+R+T rooms (simpler) ---
+    {
+        id: 'wide_top_entry',
+        tiles: [
+            '===......===',
+            '....====....',
+            '............',
+            '............',
+            '............',
+            '............',
+            '............',
+            '............',
+            '..======....',
+            '............',
+            '............',
+            '============',
+        ],
+        connections: { left: true, right: true, top: true, bottom: false },
+        difficulty: 1,
+    },
+    // --- T+B+R rooms ---
+    {
+        id: 'shaft_right_exit',
+        tiles: [
+            '===......===',
+            '....====....',
+            '............',
+            '..====......',
+            '............',
+            '............',
+            '....====....',
+            '............',
+            '............',
+            '........====',
+            '............',
+            '===......===',
+        ],
+        connections: { left: false, right: true, top: true, bottom: true },
+        difficulty: 2,
+    },
+    // --- T+B+L rooms ---
+    {
+        id: 'shaft_left_exit',
+        tiles: [
+            '===......===',
+            '....====....',
+            '............',
+            '........====',
+            '............',
+            '............',
+            '....====....',
+            '............',
+            '............',
+            '..====......',
+            '............',
+            '===......===',
+        ],
+        connections: { left: true, right: false, top: true, bottom: true },
+        difficulty: 2,
+    },
+    // --- All connections (L+R+T+B) ---
+    {
+        id: 'crossroads',
+        tiles: [
+            '===......===',
+            '....====....',
+            '............',
+            '..====......',
+            '............',
+            '............',
+            '........====',
+            '............',
+            '....====....',
+            '............',
+            '............',
+            '===......===',
+        ],
+        connections: { left: true, right: true, top: true, bottom: true },
+        difficulty: 2,
+    },
+    // --- Single-connection rooms (dead-end corridors for non-path rooms) ---
+    {
+        id: 'end_left',
+        tiles: [
+            '============',
+            '............',
+            '............',
+            '............',
+            '......====..',
+            '............',
+            '............',
+            '..====......',
+            '............',
+            '............',
+            '............',
+            '============',
+        ],
+        connections: { left: true, right: false, top: false, bottom: false },
+        difficulty: 1,
+    },
+    {
+        id: 'end_right',
+        tiles: [
+            '============',
+            '............',
+            '............',
+            '............',
+            '..====......',
+            '............',
+            '............',
+            '......====..',
+            '............',
+            '............',
+            '............',
+            '============',
+        ],
+        connections: { left: false, right: true, top: false, bottom: false },
+        difficulty: 1,
+    },
+    {
+        id: 'end_top',
+        tiles: [
+            '===......===',
+            '....====....',
+            '............',
+            '..====......',
+            '............',
+            '............',
+            '........====',
+            '............',
+            '............',
+            '............',
+            '............',
+            '============',
+        ],
+        connections: { left: false, right: false, top: true, bottom: false },
+        difficulty: 1,
+    },
+    {
+        id: 'end_bottom',
+        tiles: [
+            '============',
+            '............',
+            '............',
+            '............',
+            '........====',
+            '............',
+            '............',
+            '..====......',
+            '............',
+            '............',
+            '............',
+            '===......===',
+        ],
+        connections: { left: false, right: false, top: false, bottom: true },
+        difficulty: 1,
+    },
+    // --- Dead end (solid wall filler) ---
+    {
+        id: 'dead_end',
+        tiles: [
+            '============',
+            '============',
+            '============',
+            '============',
+            '============',
+            '============',
+            '============',
+            '============',
+            '============',
+            '============',
+            '============',
+            '============',
+        ],
+        connections: { left: false, right: false, top: false, bottom: false },
+        difficulty: 0,
+    },
+];
+
+// Track which level is currently loaded for resetGameState()
+let currentLevel = 'level1';
+
+let MAP_DATA = [...LEVEL_1.map];
 
 // Parse map into a 2D boolean grid: true = solid tile
 let tileMap = MAP_DATA.map(row =>
@@ -611,378 +1108,507 @@ function validateReachability(grid, w, h, maxUp, maxAcross) {
     }
 }
 
-/** Place a row of solid tiles, clamped to playable area */
-function placeRow(grid, y, x1, x2, width) {
-    for (let x = Math.max(1, x1); x <= Math.min(width - 2, x2); x++) {
-        grid[y][x] = true;
+// ============================================================
+// ROOM-GRID FUNCTIONS
+// ============================================================
+
+/** Generate critical path through room grid (Spelunky-style, rotated for horizontal).
+ *  Start at (0, middle row), walk RIGHT with vertical diversions, end at last col. */
+function generateCriticalPath(cols, rows, rng) {
+    const path = [];
+    const connections = new Map(); // "col,row" → {left, right, top, bottom}
+
+    let col = 0, row = Math.floor(rows / 2); // start at mid-height
+    path.push({ col, row });
+    connections.set(`${col},${row}`, { left: false, right: false, top: false, bottom: false });
+
+    let consecutiveRight = 0; // force vertical diversions after 2 straight rights
+
+    while (col < cols - 1) {
+        // Pick direction: RIGHT-biased with moderate vertical diversions.
+        // After 2 consecutive right moves, force a vertical diversion so the
+        // path can't be a straight sprint from start to exit.
+        const roll = rng();
+        let dir;
+        const forceVertical = consecutiveRight >= 2;
+        if (forceVertical) {
+            // Must go up or down
+            if (row <= 0) dir = 'down';
+            else if (row >= rows - 1) dir = 'up';
+            else dir = roll < 0.5 ? 'up' : 'down';
+        } else if (roll < 0.28 && row > 0) {
+            dir = 'up';
+        } else if (roll < 0.56 && row < rows - 1) {
+            dir = 'down';
+        } else {
+            dir = 'right';
+        }
+
+        const prevCol = col, prevRow = row;
+        const prevKey = `${prevCol},${prevRow}`;
+
+        if (dir === 'up') {
+            row--;
+            consecutiveRight = 0;
+            connections.get(prevKey).top = true;
+            const newKey = `${col},${row}`;
+            if (!connections.has(newKey)) connections.set(newKey, { left: false, right: false, top: false, bottom: false });
+            connections.get(newKey).bottom = true;
+        } else if (dir === 'down') {
+            row++;
+            consecutiveRight = 0;
+            connections.get(prevKey).bottom = true;
+            const newKey = `${col},${row}`;
+            if (!connections.has(newKey)) connections.set(newKey, { left: false, right: false, top: false, bottom: false });
+            connections.get(newKey).top = true;
+        } else {
+            col++;
+            consecutiveRight++;
+            connections.get(prevKey).right = true;
+            const newKey = `${col},${row}`;
+            if (!connections.has(newKey)) connections.set(newKey, { left: false, right: false, top: false, bottom: false });
+            connections.get(newKey).left = true;
+        }
+
+        // Avoid duplicate path entries for same cell (vertical then right through same cell)
+        if (path[path.length - 1].col !== col || path[path.length - 1].row !== row) {
+            path.push({ col, row });
+        }
     }
+
+    return { path, connections };
 }
 
-// --- PACING DATA TABLES ---
-const PACING_BEATS = {
-    3: [
-        { beat: 'hook',       difficulty: 0.5 },
-        { beat: 'climax',     difficulty: 0.9 },
-        { beat: 'resolution', difficulty: 0.3 },
-    ],
-    4: [
-        { beat: 'hook',       difficulty: 0.5 },
-        { beat: 'rising',     difficulty: 0.6 },
-        { beat: 'climax',     difficulty: 0.9 },
-        { beat: 'resolution', difficulty: 0.3 },
-    ],
-    5: [
-        { beat: 'hook',       difficulty: 0.5 },
-        { beat: 'rising',     difficulty: 0.65 },
-        { beat: 'valley',     difficulty: 0.25 },
-        { beat: 'climax',     difficulty: 0.9 },
-        { beat: 'resolution', difficulty: 0.3 },
-    ],
-};
+/** Add exploration side-branches off the critical path.
+ *  Picks 2-4 path rooms and extends 1-2 room branches perpendicular to the path.
+ *  Modifies `connections` in-place and returns the branch cells. */
+function addSideBranches(path, connections, cols, rows, rng) {
+    const usedSet = new Set(path.map(p => `${p.col},${p.row}`));
+    // Also mark any rooms already in connections (shouldn't differ, but safe)
+    for (const key of connections.keys()) usedSet.add(key);
 
-// Weighted archetype preferences per beat (higher = more likely)
-const BEAT_ARCHETYPE_WEIGHTS = {
-    hook:       { canyon: 3, tower: 3, open: 1, corridor: 1, staircase: 2 },
-    rising:     { canyon: 1, tower: 3, open: 1, corridor: 1, staircase: 3 },
-    valley:     { canyon: 1, tower: 0, open: 3, corridor: 3, staircase: 1 },
-    climax:     { canyon: 3, tower: 3, open: 1, corridor: 2, staircase: 2 },
-    resolution: { canyon: 1, tower: 0, open: 3, corridor: 3, staircase: 1 },
-};
+    const branchCells = [];
 
-/** Pick archetype via weighted random from beat preferences, no back-to-back */
-function selectArchetype(beat, rng, lastType) {
-    const weights = BEAT_ARCHETYPE_WEIGHTS[beat];
-    const entries = Object.entries(weights).filter(([t, w]) => t !== lastType && w > 0);
-    const total = entries.reduce((sum, [, w]) => sum + w, 0);
+    // Candidates: path rooms excluding first and last (keep start/exit clean)
+    const candidates = path.slice(1, -1);
+    for (let i = candidates.length - 1; i > 0; i--) {
+        const j = Math.floor(rng() * (i + 1));
+        [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+    }
+
+    const maxBranches = Math.min(4, Math.max(2, Math.floor(path.length / 3)));
+    let branches = 0;
+
+    for (const cell of candidates) {
+        if (branches >= maxBranches) break;
+
+        const dirs = [
+            { dc: 0, dr: -1, exit: 'top', enter: 'bottom' },
+            { dc: 0, dr: 1, exit: 'bottom', enter: 'top' },
+            { dc: -1, dr: 0, exit: 'left', enter: 'right' },
+            { dc: 1, dr: 0, exit: 'right', enter: 'left' },
+        ];
+        for (let i = dirs.length - 1; i > 0; i--) {
+            const j = Math.floor(rng() * (i + 1));
+            [dirs[i], dirs[j]] = [dirs[j], dirs[i]];
+        }
+
+        for (const d of dirs) {
+            const nc = cell.col + d.dc;
+            const nr = cell.row + d.dr;
+            if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue;
+            const nk = `${nc},${nr}`;
+            if (usedSet.has(nk)) continue;
+
+            // Open connection on the path room
+            const cellKey = `${cell.col},${cell.row}`;
+            connections.get(cellKey)[d.exit] = true;
+
+            // Create branch room with entry connection
+            usedSet.add(nk);
+            const branchConn = { left: false, right: false, top: false, bottom: false };
+            branchConn[d.enter] = true;
+            connections.set(nk, branchConn);
+            branchCells.push({ col: nc, row: nr });
+
+            // 40% chance to extend branch by one more room
+            if (rng() < 0.4) {
+                const nc2 = nc + d.dc;
+                const nr2 = nr + d.dr;
+                const nk2 = `${nc2},${nr2}`;
+                if (nc2 >= 0 && nc2 < cols && nr2 >= 0 && nr2 < rows && !usedSet.has(nk2)) {
+                    connections.get(nk)[d.exit] = true;
+                    usedSet.add(nk2);
+                    const branch2Conn = { left: false, right: false, top: false, bottom: false };
+                    branch2Conn[d.enter] = true;
+                    connections.set(nk2, branch2Conn);
+                    branchCells.push({ col: nc2, row: nr2 });
+                }
+            }
+
+            branches++;
+            break;
+        }
+    }
+
+    return branchCells;
+}
+
+/** Compute required connections for every cell in the grid.
+ *  Connected rooms (path + branches) use their connections from the map.
+ *  Non-connected rooms adjacent to connected rooms must match outward-facing
+ *  connections. All others get no connections (dead_end). */
+function computeAllCellConnections(path, pathConns, cols, rows) {
+    const allConns = new Map();
+    // connectedSet = all rooms that have explicit connections (path + branches)
+    const connectedSet = new Set();
+    for (const key of pathConns.keys()) connectedSet.add(key);
+
+    // Start with connected room connections (path + branches)
+    for (const [key, conn] of pathConns) {
+        allConns.set(key, { ...conn });
+    }
+
+    // For each non-connected cell, check if any neighbor is connected with an outward connection
+    for (let c = 0; c < cols; c++) {
+        for (let r = 0; r < rows; r++) {
+            const key = `${c},${r}`;
+            if (connectedSet.has(key)) continue;
+
+            const conn = { left: false, right: false, top: false, bottom: false };
+
+            // Check left neighbor (c-1, r): if connected and has right=true, we need left=true
+            if (c > 0) {
+                const nk = `${c - 1},${r}`;
+                if (pathConns.has(nk) && pathConns.get(nk).right) conn.left = true;
+            }
+            // Check right neighbor
+            if (c < cols - 1) {
+                const nk = `${c + 1},${r}`;
+                if (pathConns.has(nk) && pathConns.get(nk).left) conn.right = true;
+            }
+            // Check top neighbor
+            if (r > 0) {
+                const nk = `${c},${r - 1}`;
+                if (pathConns.has(nk) && pathConns.get(nk).bottom) conn.top = true;
+            }
+            // Check bottom neighbor
+            if (r < rows - 1) {
+                const nk = `${c},${r + 1}`;
+                if (pathConns.has(nk) && pathConns.get(nk).top) conn.bottom = true;
+            }
+
+            allConns.set(key, conn);
+        }
+    }
+
+    return allConns;
+}
+
+/** Select a room template for a given cell based on required connections and column-based difficulty */
+function selectRoomForCell(col, row, required, cols, rng) {
+    // Difficulty tier based on column position (early = easy, late = hard)
+    const colFrac = col / (cols - 1);
+    const targetDiff = colFrac < 0.33 ? 1 : (colFrac < 0.66 ? 2 : 3);
+
+    // If no connections required, use dead_end
+    if (!required.left && !required.right && !required.top && !required.bottom) {
+        return ROOM_TEMPLATES.find(t => t.id === 'dead_end');
+    }
+
+    // Prefer exact connection matches (no extra openings into solid walls)
+    const exact = ROOM_TEMPLATES.filter(t => {
+        if (t.id === 'dead_end') return false;
+        return t.connections.left === required.left &&
+               t.connections.right === required.right &&
+               t.connections.top === required.top &&
+               t.connections.bottom === required.bottom;
+    });
+
+    const candidates = exact.length > 0 ? exact : ROOM_TEMPLATES.filter(t => {
+        // Fallback: superset match (has all required, may have extras)
+        if (t.id === 'dead_end') return false;
+        if (required.left && !t.connections.left) return false;
+        if (required.right && !t.connections.right) return false;
+        if (required.top && !t.connections.top) return false;
+        if (required.bottom && !t.connections.bottom) return false;
+        return true;
+    });
+
+    if (candidates.length === 0) {
+        // Fallback: flat_ground (always has L+R)
+        return ROOM_TEMPLATES.find(t => t.id === 'flat_ground');
+    }
+
+    // Weight by difficulty proximity (closer to target = higher weight)
+    const weights = candidates.map(t => {
+        const diff = Math.abs(t.difficulty - targetDiff);
+        return Math.max(0.1, 3 - diff);
+    });
+    const total = weights.reduce((s, w) => s + w, 0);
     let roll = rng() * total;
-    for (const [type, w] of entries) {
-        roll -= w;
-        if (roll <= 0) return type;
+    for (let i = 0; i < candidates.length; i++) {
+        roll -= weights[i];
+        if (roll <= 0) return candidates[i];
     }
-    return entries[entries.length - 1][0];
+    return candidates[candidates.length - 1];
 }
 
-/** Place transition zone at section boundary: 3-tile ground + optional perch */
-function applyTransitionZone(grid, leftSec, rightSec, groundY, width) {
-    const bx = rightSec.sx;
-    const clamp = (x) => Math.max(1, Math.min(x, width - 2));
-    // 3 tiles of ground at boundary
-    for (let x = bx - 1; x <= bx + 1; x++) grid[groundY][clamp(x)] = true;
-    // Perch platform when difficulty delta is steep
-    const delta = Math.abs((leftSec.difficulty || 0) - (rightSec.difficulty || 0));
-    if (delta > 0.3 && groundY - 3 > 2) {
-        placeRow(grid, groundY - 3, clamp(bx - 1), clamp(bx + 1), width);
+/** Select room templates for every cell in the grid */
+function selectAllRooms(allConns, cols, rows, rng) {
+    const roomGrid = [];
+    for (let r = 0; r < rows; r++) {
+        roomGrid[r] = [];
+        for (let c = 0; c < cols; c++) {
+            const key = `${c},${r}`;
+            const required = allConns.get(key) || { left: false, right: false, top: false, bottom: false };
+            roomGrid[r][c] = selectRoomForCell(c, r, required, cols, rng);
+        }
     }
+    return roomGrid;
 }
 
-/** Random platform length with personality: mix of tiny, medium, and wide */
-function randPlatLen(rng, density) {
-    const roll = rng();
-    if (roll < 0.25) return 1 + Math.floor(rng() * 2);                         // tiny: 1-2
-    if (roll < 0.55) return 3 + Math.floor(rng() * 2);                         // medium: 3-4
-    return 5 + Math.floor(rng() * Math.max(1, Math.round(3 * density)));       // wide: 5-7+
-}
+/** Stamp room templates into a full tile grid */
+function assembleRoomGrid(roomGrid, totalW, totalH) {
+    const grid = [];
+    for (let y = 0; y < totalH; y++) {
+        grid[y] = [];
+        for (let x = 0; x < totalW; x++) grid[y][x] = false;
+    }
 
-/** Generate a single section by archetype. difficulty 0-1 modulates parameters. */
-function generateSection(grid, type, sx, ex, groundY, height, width, rng, density, maxUp, maxAcross, difficulty) {
-    const d = typeof difficulty === 'number' ? difficulty : 0.5;
-    const secW = ex - sx + 1;
-    const clamp = (x) => Math.max(1, Math.min(x, width - 2));
-
-    switch (type) {
-
-        case 'canyon': {
-            // Gap min width scales up with difficulty
-            const minGap = 2 + Math.floor(d * 2);
-            const gapW = minGap + Math.floor(rng() * Math.max(1, Math.min(maxAcross - 1, secW - 6) - minGap + 1));
-            const gapMid = sx + Math.floor(secW / 2) + Math.floor(rng() * 3) - 1;
-            const gs = clamp(gapMid - Math.floor(gapW / 2));
-            const ge = clamp(gs + gapW - 1);
-
-            for (let x = sx; x <= ex; x++) {
-                if (x < gs || x > ge) grid[groundY][x] = true;
+    for (let r = 0; r < GRID_ROWS; r++) {
+        for (let c = 0; c < GRID_COLS; c++) {
+            const template = roomGrid[r][c];
+            const ox = c * ROOM_W;
+            const oy = r * ROOM_H;
+            for (let ty = 0; ty < ROOM_H; ty++) {
+                for (let tx = 0; tx < ROOM_W; tx++) {
+                    grid[oy + ty][ox + tx] = template.tiles[ty][tx] === '=';
+                }
             }
-
-            // Bridge height scales up with difficulty
-            const bridgeY = groundY - Math.max(2, Math.floor(maxUp * (0.3 + d * 0.3)));
-            if (bridgeY > 2) {
-                placeRow(grid, bridgeY, gs - 1, ge + 1, width);
-            }
-
-            // Upper reward platform
-            const upperY = bridgeY - Math.max(2, Math.floor(maxUp * 0.5));
-            if (upperY > 2 && secW >= 8) {
-                const midX = sx + Math.floor(secW / 2);
-                const pLen = randPlatLen(rng, density);
-                placeRow(grid, upperY, midX - Math.floor(pLen / 2), midX + Math.ceil(pLen / 2), width);
-            }
-            break;
         }
+    }
 
-        case 'tower': {
-            // Ground floor
-            for (let x = sx; x <= ex; x++) grid[groundY][x] = true;
+    // Enforce connection zones between adjacent rooms
+    for (let r = 0; r < GRID_ROWS; r++) {
+        for (let c = 0; c < GRID_COLS; c++) {
+            const template = roomGrid[r][c];
+            const ox = c * ROOM_W;
+            const oy = r * ROOM_H;
 
-            // Vertical stack — step-up height increases with difficulty, platforms narrower
-            const towerCenter = sx + Math.floor(secW / 2) + Math.floor(rng() * 3) - 1;
-            let towerY = groundY;
-            let tier = 0;
-            const towerDensity = density * (1.2 - d * 0.6);
-            while (true) {
-                const baseStep = 2 + Math.floor(d * 1.5);
-                const stepUp = baseStep + Math.floor(rng() * Math.max(1, maxUp - baseStep));
-                const nextY = towerY - stepUp;
-                if (nextY <= 2) break;
-
-                const offset = (tier % 2 === 0)
-                    ? -(1 + Math.floor(rng() * 2))
-                    : (1 + Math.floor(rng() * 2));
-                const pLen = randPlatLen(rng, towerDensity);
-                const px = clamp(towerCenter + offset - Math.floor(pLen / 2));
-                placeRow(grid, nextY, px, px + pLen - 1, width);
-
-                towerY = nextY;
-                tier++;
-            }
-
-            // Side approach platform
-            const sideX = (towerCenter - sx > secW / 2) ? sx + 1 : ex - 4;
-            const sLen = 3 + Math.floor(rng() * 3);
-            const sideY = groundY - (2 + Math.floor(rng() * Math.max(1, maxUp - 2)));
-            if (sideY > 2) {
-                placeRow(grid, sideY, clamp(sideX), clamp(sideX + sLen - 1), width);
-            }
-            break;
-        }
-
-        case 'open': {
-            // Ground coverage decreases with difficulty (75% at d=0, 43% at d=1)
-            const groundProb = 0.75 - d * 0.32;
-            let x = sx;
-            while (x <= ex) {
-                if (rng() < groundProb) {
-                    const segLen = 3 + Math.floor(rng() * 5);
-                    for (let gx = x; gx < Math.min(x + segLen, ex + 1); gx++) {
-                        grid[groundY][gx] = true;
+            // Left connection zone: cols 0-2, rows (H-6)..(H-2) empty, row (H-1) solid
+            // 3 wide × 5 tall so the passage is clearly visible and easy to traverse
+            if (template.connections.left) {
+                for (let dx = 0; dx < 3; dx++) {
+                    for (let dy = ROOM_H - 6; dy <= ROOM_H - 2; dy++) {
+                        grid[oy + dy][ox + dx] = false;
                     }
-                    // Occasional raised bump
-                    if (rng() < 0.3 && segLen > 3) {
-                        const bLen = 2 + Math.floor(rng() * 2);
-                        for (let bx = x + 1; bx < Math.min(x + 1 + bLen, ex + 1); bx++) {
-                            grid[groundY - 1][bx] = true;
-                        }
+                    grid[oy + ROOM_H - 1][ox + dx] = true;
+                }
+            }
+
+            // Right connection zone: last 3 cols, rows (H-6)..(H-2) empty, row (H-1) solid
+            if (template.connections.right) {
+                for (let dx = ROOM_W - 3; dx < ROOM_W; dx++) {
+                    for (let dy = ROOM_H - 6; dy <= ROOM_H - 2; dy++) {
+                        grid[oy + dy][ox + dx] = false;
                     }
-                    x += segLen;
-                } else {
-                    // Ground gap width scales up with difficulty
-                    const maxGap = Math.min(3 + Math.floor(d * 2), maxAcross);
-                    x += 1 + Math.floor(rng() * maxGap);
+                    grid[oy + ROOM_H - 1][ox + dx] = true;
                 }
             }
 
-            // Scattered platforms at various heights — mix of sizes
-            const platCount = 2 + Math.floor(rng() * 4);
-            for (let p = 0; p < platCount; p++) {
-                const px = sx + 1 + Math.floor(rng() * (secW - 2));
-                const py = 3 + Math.floor(rng() * (groundY - 5));
-                const pLen = randPlatLen(rng, density);
-                placeRow(grid, py, clamp(px), clamp(px + pLen - 1), width);
-            }
-            break;
-        }
-
-        case 'corridor': {
-            // Full ground with low ceiling — ceiling lower at high difficulty
-            for (let x = sx; x <= ex; x++) grid[groundY][x] = true;
-
-            const ceilHeight = 3 + Math.floor((1 - d) * 2);
-            const ceilY = groundY - ceilHeight;
-            for (let x = sx; x <= ex; x++) grid[ceilY][x] = true;
-
-            // Fewer ceiling gaps at high difficulty
-            const gapCount = 1 + Math.floor(rng() * Math.max(1, 3 - Math.floor(d * 2)));
-            for (let g = 0; g < gapCount; g++) {
-                const gx = sx + 1 + Math.floor(rng() * (secW - 4));
-                const gLen = 2 + Math.floor(rng() * 2);
-                for (let x = gx; x < Math.min(gx + gLen, ex + 1); x++) {
-                    grid[ceilY][x] = false;
+            // Top connection zone: rows 0-1, center 6 cols empty
+            // 2 rows tall so the vertical passage between rooms is 4 tiles total
+            if (template.connections.top) {
+                for (let dx = ROOM_W / 2 - 3; dx < ROOM_W / 2 + 3; dx++) {
+                    grid[oy][ox + dx] = false;
+                    grid[oy + 1][ox + dx] = false;
                 }
+                // Stepping ledges at row 2 for jumping up: extend any template
+                // platform to cover the gap edges so zombie can reach the ceiling
+                grid[oy + 2][ox + ROOM_W / 2 - 3] = true;  // col 3 ledge
+                grid[oy + 2][ox + ROOM_W / 2 + 2] = true;  // col 8 ledge
             }
 
-            // Upper platforms above the ceiling (risk/reward high path)
-            const upperCount = 1 + Math.floor(rng() * 2);
-            for (let u = 0; u < upperCount; u++) {
-                const ux = sx + 1 + Math.floor(rng() * (secW - 4));
-                const uy = ceilY - (2 + Math.floor(rng() * Math.max(1, maxUp - 2)));
-                if (uy > 2) {
-                    const uLen = randPlatLen(rng, density);
-                    placeRow(grid, uy, clamp(ux), clamp(ux + uLen - 1), width);
+            // Bottom connection zone: rows (H-2)..(H-1), center 6 cols empty
+            // 2 rows tall so the vertical passage between rooms is 4 tiles total
+            if (template.connections.bottom) {
+                for (let dx = ROOM_W / 2 - 3; dx < ROOM_W / 2 + 3; dx++) {
+                    grid[oy + ROOM_H - 1][ox + dx] = false;
+                    grid[oy + ROOM_H - 2][ox + dx] = false;
                 }
-            }
-
-            // More ground bumps at high difficulty
-            if (rng() < 0.4 + d * 0.3) {
-                const bx = sx + 1 + Math.floor(rng() * (secW - 4));
-                const bLen = 2 + Math.floor(rng() * 3);
-                for (let x = bx; x < Math.min(bx + bLen, ex + 1); x++) {
-                    grid[groundY - 1][x] = true;
-                }
-            }
-            break;
-        }
-
-        case 'staircase': {
-            // Ascending or descending chain of platforms
-            const ascending = rng() < 0.5;
-
-            // Ground on the starting side
-            const gStart = ascending ? sx : sx + Math.floor(secW * 0.5);
-            const gEnd = ascending ? sx + Math.floor(secW * 0.5) : ex;
-            for (let x = gStart; x <= gEnd; x++) grid[groundY][x] = true;
-
-            // Rise and run scale up with difficulty, platforms narrower
-            const stepCount = 3 + Math.floor(rng() * 3);
-            let stepY = groundY;
-            let stepX = ascending ? sx + 2 : ex - 2;
-            const dir = ascending ? 1 : -1;
-            const stairDensity = density * (1.1 - d * 0.4);
-
-            for (let s = 0; s < stepCount; s++) {
-                const riseMax = Math.max(1, Math.floor(maxUp * (0.3 + d * 0.2)));
-                const rise = 1 + Math.floor(rng() * riseMax);
-                const runMax = Math.max(1, maxAcross - 1 + Math.floor(d * 2));
-                const run = 2 + Math.floor(rng() * runMax);
-                stepY -= rise;
-                stepX += dir * run;
-                if (stepY <= 2 || stepX < sx + 1 || stepX > ex - 1) break;
-
-                const pLen = randPlatLen(rng, stairDensity);
-                placeRow(grid, stepY, clamp(stepX), clamp(stepX + pLen - 1), width);
-            }
-            break;
-        }
-    }
-}
-
-/** Inject 1-2 landmark features for visual identity */
-function injectLandmarks(grid, width, height, groundY, rng, maxUp) {
-    const count = 1 + Math.floor(rng() * 2);
-    const types = ['pillar', 'floater', 'overhang'];
-
-    for (let i = 0; i < count; i++) {
-        const type = types[Math.floor(rng() * types.length)];
-
-        switch (type) {
-            case 'pillar': {
-                // Tall 1-wide column rising from ground
-                const px = 3 + Math.floor(rng() * (width - 6));
-                const pillarH = 3 + Math.floor(rng() * 5);
-                for (let dy = 1; dy <= pillarH && groundY - dy > 1; dy++) {
-                    grid[groundY - dy][px] = true;
-                }
-                break;
-            }
-            case 'floater': {
-                // Single floating tile in open space
-                const fx = 3 + Math.floor(rng() * (width - 6));
-                const fy = 3 + Math.floor(rng() * (height - 8));
-                grid[fy][fx] = true;
-                break;
-            }
-            case 'overhang': {
-                // Hang 1-2 tiles below an existing platform edge
-                for (let attempt = 0; attempt < 15; attempt++) {
-                    const ox = 2 + Math.floor(rng() * (width - 4));
-                    const oy = 3 + Math.floor(rng() * (height - 6));
-                    if (grid[oy][ox] && oy + 1 < groundY && !grid[oy + 1][ox]) {
-                        grid[oy + 1][ox] = true;
-                        if (rng() < 0.5 && ox + 1 < width - 1 &&
-                            grid[oy][ox + 1] && !grid[oy + 1][ox + 1]) {
-                            grid[oy + 1][ox + 1] = true;
-                        }
-                        break;
-                    }
-                }
-                break;
             }
         }
     }
+
+    return grid;
 }
 
-/** Generate a level with the given parameters */
+/** Find valid standing positions within a room's tile area on the assembled grid.
+ *  Avoids connection zones, single-tile platforms, and positions without headroom. */
+function findRoomStandingPositions(roomCol, roomRow) {
+    const positions = [];
+    const ox = roomCol * ROOM_W;
+    const oy = roomRow * ROOM_H;
+    // Stay inside room interior: skip connection zone margins
+    // Left/right: skip first 4 and last 4 cols (connection zones are 3 cols wide)
+    // Top/bottom: skip first 3 and last 3 rows (connection zones are 2 rows deep)
+    const margin = 4;
+    const topMargin = 3;
+    const botMargin = 3;
+    for (let ty = topMargin; ty < ROOM_H - botMargin; ty++) {
+        for (let tx = margin; tx < ROOM_W - margin; tx++) {
+            const wx = ox + tx;
+            const wy = oy + ty;
+            if (wy + 1 >= MAP_ROWS) continue;
+            // Must be empty with solid ground below
+            if (tileMap[wy][wx] || !tileMap[wy + 1][wx]) continue;
+            // Require 2 tiles of headroom above (zombie is 1.5 tiles tall)
+            if (wy - 1 >= 0 && tileMap[wy - 1][wx]) continue;
+            // Require at least 2 solid tiles in a row under this position
+            // (avoid isolated single-tile platforms)
+            const hasNeighborGround =
+                (wx > 0 && tileMap[wy + 1][wx - 1]) ||
+                (wx + 1 < MAP_COLS && tileMap[wy + 1][wx + 1]);
+            if (!hasNeighborGround) continue;
+            positions.push({ col: wx, row: wy });
+        }
+    }
+    return positions;
+}
+
+/** Place entities on valid ground positions, spread across the path */
+function placeEntitiesFromRoomGrid(roomGrid, path, rng) {
+    GameState.entities.civilians = [];
+    GameState.entities.guards = [];
+
+    const pathSet = new Set(path.map(p => `${p.col},${p.row}`));
+
+    // Deduplicate path cells (path can revisit same cell via vertical moves)
+    const uniquePath = [];
+    const seen = new Set();
+    for (const cell of path) {
+        const key = `${cell.col},${cell.row}`;
+        if (!seen.has(key)) { seen.add(key); uniquePath.push(cell); }
+    }
+
+    // Collect valid standing positions for each path room
+    const pathRoomPositions = [];
+    for (const cell of uniquePath) {
+        const template = roomGrid[cell.row][cell.col];
+        if (template.id === 'dead_end' || template.id === 'vertical_shaft') continue;
+        const positions = findRoomStandingPositions(cell.col, cell.row);
+        if (positions.length > 0) {
+            pathRoomPositions.push({ cell, positions });
+        }
+    }
+
+    // Place civilians: every 2nd path room, cap at 10
+    const civTarget = Math.min(10, Math.ceil(pathRoomPositions.length / 2));
+    const civSpacing = Math.max(1, Math.floor(pathRoomPositions.length / civTarget));
+    for (let i = 0; i < civTarget && i * civSpacing < pathRoomPositions.length; i++) {
+        const room = pathRoomPositions[i * civSpacing];
+        const pos = room.positions[Math.floor(rng() * room.positions.length)];
+        const px = pos.col * TILE_SIZE + (TILE_SIZE - 24) / 2;
+        const py = pos.row * TILE_SIZE + TILE_SIZE - 24;
+        GameState.entities.civilians.push(createCivilian(px, py));
+    }
+
+    // Place 1-2 bonus civilians in off-path rooms
+    const offPathRooms = [];
+    for (let r = 0; r < GRID_ROWS; r++) {
+        for (let c = 0; c < GRID_COLS; c++) {
+            if (pathSet.has(`${c},${r}`)) continue;
+            const template = roomGrid[r][c];
+            if (template.id === 'dead_end') continue;
+            const positions = findRoomStandingPositions(c, r);
+            if (positions.length > 0) offPathRooms.push({ col: c, row: r, positions });
+        }
+    }
+    for (let i = offPathRooms.length - 1; i > 0; i--) {
+        const j = Math.floor(rng() * (i + 1));
+        [offPathRooms[i], offPathRooms[j]] = [offPathRooms[j], offPathRooms[i]];
+    }
+    for (let i = 0; i < Math.min(5, offPathRooms.length); i++) {
+        const room = offPathRooms[i];
+        const pos = room.positions[Math.floor(rng() * room.positions.length)];
+        const px = pos.col * TILE_SIZE + (TILE_SIZE - 24) / 2;
+        const py = pos.row * TILE_SIZE + TILE_SIZE - 24;
+        GameState.entities.civilians.push(createCivilian(px, py));
+    }
+
+    // Place guards near civilians so they can guard them.
+    // Pick civilians to guard, then find a standing position on the same ground row
+    // a few tiles away. This guarantees areSamePlatform() succeeds for assignGuards().
+    const civs = [...GameState.entities.civilians];
+    for (let i = civs.length - 1; i > 0; i--) {
+        const j = Math.floor(rng() * (i + 1));
+        [civs[i], civs[j]] = [civs[j], civs[i]];
+    }
+    const guardCount = Math.min(6, civs.length);
+    for (let i = 0; i < guardCount; i++) {
+        const civ = civs[i];
+        const civCol = Math.floor(civ.x / TILE_SIZE);
+        const civFootRow = Math.floor((civ.y + civ.height) / TILE_SIZE);
+        // Search for a standing position 2-6 tiles to either side on the same ground row
+        let placed = false;
+        const offsets = [3, -3, 4, -4, 2, -2, 5, -5, 6, -6];
+        for (const off of offsets) {
+            const tx = civCol + off;
+            if (tx < 0 || tx >= MAP_COLS) continue;
+            const standRow = civFootRow - 1;
+            if (standRow < 0 || standRow >= MAP_ROWS) continue;
+            // Must be empty with solid ground below, and have headroom
+            if (tileMap[standRow][tx]) continue;
+            if (!tileMap[civFootRow][tx]) continue;
+            if (standRow > 0 && tileMap[standRow - 1][tx]) continue;
+            const px = tx * TILE_SIZE + (TILE_SIZE - 32) / 2;
+            const py = standRow * TILE_SIZE + TILE_SIZE - 32;
+            GameState.entities.guards.push(createGuard(px, py));
+            placed = true;
+            break;
+        }
+        // Fallback: spawn directly at civilian position if no offset works
+        if (!placed) {
+            const px = civ.x + (civ.width - 32) / 2;
+            const py = civ.y + civ.height - 32;
+            GameState.entities.guards.push(createGuard(px, py));
+        }
+    }
+
+    assignGuards(GameState);
+}
+
+/** Generate a level using the room-grid system */
 function generateLevel(width, height, density, minSanity, seed) {
     const rng = splitmix32(seed);
     const { maxUpTiles, maxAcrossTiles } = calcJumpEnvelope(minSanity);
-    const groundY = height - 1;
 
-    // Initialize empty grid with walls and ceiling
-    const grid = [];
-    for (let y = 0; y < height; y++) {
-        grid[y] = [];
-        for (let x = 0; x < width; x++) grid[y][x] = false;
-    }
-    for (let y = 0; y < height; y++) { grid[y][0] = true; grid[y][width - 1] = true; }
-    for (let x = 0; x < width; x++) grid[0][x] = true;
+    // 1. Generate critical path
+    const { path, connections } = generateCriticalPath(GRID_COLS, GRID_ROWS, rng);
 
-    // --- SECTION-BASED GENERATION ---
-    const archetypes = ['canyon', 'tower', 'open', 'corridor', 'staircase'];
-    const sectionCount = Math.max(3, Math.min(5, Math.floor(width / 10)));
-    const secW = Math.floor((width - 2) / sectionCount);
+    // 2. Add exploration side-branches off the critical path
+    const branchCells = addSideBranches(path, connections, GRID_COLS, GRID_ROWS, rng);
 
-    const sections = [];
-    let lastType = null;
+    // 3. Determine required connections for all cells (path + branches + neighbors)
+    const allConns = computeAllCellConnections(path, connections, GRID_COLS, GRID_ROWS);
 
-    if (PACING_ENABLED) {
-        // Pacing-aware sequencer: follow Schell's interest curve
-        const beats = PACING_BEATS[sectionCount] || PACING_BEATS[5];
-        for (let i = 0; i < sectionCount; i++) {
-            const sx = 1 + i * secW;
-            const ex = (i === sectionCount - 1) ? width - 2 : sx + secW - 1;
-            const beat = beats[Math.min(i, beats.length - 1)];
-            const type = selectArchetype(beat.beat, rng, lastType);
-            const diff = Math.min(1.0, beat.difficulty * PACING_DIFFICULTY_SCALE);
-            lastType = type;
-            sections.push({ sx, ex, type, difficulty: diff });
-        }
-    } else {
-        // Original random behavior (no pacing)
-        for (let i = 0; i < sectionCount; i++) {
-            const sx = 1 + i * secW;
-            const ex = (i === sectionCount - 1) ? width - 2 : sx + secW - 1;
-            let available = archetypes.filter(t => t !== lastType);
-            const type = available[Math.floor(rng() * available.length)];
-            lastType = type;
-            sections.push({ sx, ex, type, difficulty: 0.5 });
-        }
-        // Guarantee at least one tower or canyon for vertical interest
-        if (!sections.some(s => s.type === 'tower' || s.type === 'canyon')) {
-            const idx = 1 + Math.floor(rng() * Math.max(1, sections.length - 2));
-            sections[idx].type = rng() < 0.5 ? 'tower' : 'canyon';
-        }
-    }
+    // 4. Select room template for each cell
+    const roomGrid = selectAllRooms(allConns, GRID_COLS, GRID_ROWS, rng);
 
-    // Generate each section with its difficulty
-    for (const sec of sections) {
-        generateSection(grid, sec.type, sec.sx, sec.ex,
-            groundY, height, width, rng, density, maxUpTiles, maxAcrossTiles, sec.difficulty);
-    }
+    // 5. Assemble into tile grid
+    const totalW = GRID_COLS * ROOM_W;
+    const totalH = GRID_ROWS * ROOM_H;
+    const grid = assembleRoomGrid(roomGrid, totalW, totalH);
 
-    // Transition zones at section boundaries
-    for (let i = 1; i < sections.length; i++) {
-        applyTransitionZone(grid, sections[i - 1], sections[i], groundY, width);
-    }
-    // Ensure first and last section edges have ground
-    const first = sections[0], last = sections[sections.length - 1];
-    grid[groundY][first.sx] = true;
-    if (first.sx + 1 <= first.ex) grid[groundY][first.sx + 1] = true;
-    grid[groundY][last.ex] = true;
-    if (last.ex - 1 >= last.sx) grid[groundY][last.ex - 1] = true;
+    // 6. Skip BFS validation — room templates are hand-designed with
+    // intentional platforms. The old BFS seeds from the absolute grid
+    // bottom and can't reach rooms surrounded by solid dead_end walls.
 
-    // --- LANDMARKS ---
-    injectLandmarks(grid, width, height, groundY, rng, maxUpTiles);
-
-    // --- BFS REACHABILITY VALIDATION ---
-    validateReachability(grid, width, height, maxUpTiles, maxAcrossTiles);
+    // Store room grid data for entity placement
+    generateLevel._lastRoomGrid = roomGrid;
+    generateLevel._lastPath = path;
+    generateLevel._lastRng = rng;
 
     return grid;
 }
@@ -996,6 +1622,12 @@ function resizeCanvas() {
 
 /** Find a valid spawn point and place the zombie there */
 function findAndSetSpawn() {
+    // If we have path data, spawn in the first critical-path room
+    if (generateLevel._lastPath && generateLevel._lastPath.length > 0) {
+        const room = generateLevel._lastPath[0];
+        if (spawnInRoom(room.col, room.row)) return;
+    }
+    // Fallback: scan leftmost columns globally
     for (let col = 0; col < MAP_COLS; col++) {
         for (let row = MAP_ROWS - 1; row >= 0; row--) {
             if (!tileMap[row][col]) continue;
@@ -1012,8 +1644,32 @@ function findAndSetSpawn() {
     }
 }
 
+/** Spawn the zombie in a specific room on the grid */
+function spawnInRoom(roomCol, roomRow) {
+    const ox = roomCol * ROOM_W;
+    const oy = roomRow * ROOM_H;
+    for (let ty = ROOM_H - 1; ty >= 0; ty--) {
+        for (let tx = 2; tx < ROOM_W - 2; tx++) {
+            const col = ox + tx;
+            const row = oy + ty;
+            if (row < 2 || row >= MAP_ROWS) continue;
+            if (!tileMap[row][col]) continue;
+            if (!tileMap[row - 1][col] && !tileMap[row - 2][col]) {
+                zombie.x = col * TILE_SIZE;
+                zombie.y = row * TILE_SIZE - zombie.height;
+                zombie.vx = 0;
+                zombie.vy = 0;
+                zombie.grounded = false;
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 /** Apply a generated grid as the active level */
 function applyLevel(grid, width, height) {
+    currentLevel = 'generated';
     MAP_COLS = width;
     MAP_ROWS = height;
     tileMap = grid;
@@ -1021,16 +1677,51 @@ function applyLevel(grid, width, height) {
     MAP_DATA = grid.map(row => row.map(v => v ? '=' : '.').join(''));
     resizeCanvas();
     findAndSetSpawn();
-    // Clear entities and place exit (Gauntlet placement only works on Gauntlet map)
+    // Place entities from room grid data
     if (typeof GameState !== 'undefined') {
-        GameState.entities.civilians = [];
-        GameState.entities.threats = [];
-        if (typeof findAndSetExit === 'function') findAndSetExit();
+        if (generateLevel._lastRoomGrid && generateLevel._lastPath && generateLevel._lastRng) {
+            placeEntitiesFromRoomGrid(generateLevel._lastRoomGrid, generateLevel._lastPath, generateLevel._lastRng);
+        } else {
+            GameState.entities.civilians = [];
+            GameState.entities.guards = [];
+        }
+        // Place exit in last path room if available
+        if (generateLevel._lastPath && generateLevel._lastPath.length > 0) {
+            const lastRoom = generateLevel._lastPath[generateLevel._lastPath.length - 1];
+            if (!setExitInRoom(lastRoom.col, lastRoom.row)) {
+                if (typeof findAndSetExit === 'function') findAndSetExit();
+            }
+        } else if (typeof findAndSetExit === 'function') {
+            findAndSetExit();
+        }
     }
+}
+
+/** Place the exit in a specific room on the grid */
+function setExitInRoom(roomCol, roomRow) {
+    const ox = roomCol * ROOM_W;
+    const oy = roomRow * ROOM_H;
+    for (let tx = ROOM_W - 3; tx >= 2; tx--) {
+        for (let ty = ROOM_H - 1; ty >= 0; ty--) {
+            const col = ox + tx;
+            const row = oy + ty;
+            if (row < 2 || row >= MAP_ROWS) continue;
+            if (!tileMap[row][col]) continue;
+            if (!tileMap[row - 1][col] && !tileMap[row - 2][col]) {
+                GameState.level.exit.x = col * TILE_SIZE;
+                GameState.level.exit.y = (row - 2) * TILE_SIZE;
+                GameState.level.exit.width = 32;
+                GameState.level.exit.height = 64;
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 /** Restore the hardcoded Sanity Gauntlet map */
 function loadPresetGauntlet() {
+    currentLevel = 'gauntlet';
     MAP_COLS = 40;
     MAP_ROWS = 25;
     MAP_DATA = [...PRESET_GAUNTLET];
@@ -1039,24 +1730,54 @@ function loadPresetGauntlet() {
     findAndSetSpawn();
     // Repopulate entities for the Gauntlet map
     if (typeof placeCiviliansOnGauntlet === 'function') placeCiviliansOnGauntlet();
-    if (typeof placeThreatsOnMap === 'function') { placeThreatsOnMap(); assignGuards(GameState); }
+    if (typeof placeGuardsOnMap === 'function') { placeGuardsOnMap(); assignGuards(GameState); }
     if (typeof findAndSetExit === 'function') findAndSetExit();
-    // Update generator sliders to match
-    const ws = document.getElementById('gen-width');
-    const hs = document.getElementById('gen-height');
-    if (ws) { ws.value = 40; document.getElementById('gen-width-val').textContent = '40'; }
-    if (hs) { hs.value = 25; document.getElementById('gen-height-val').textContent = '25'; }
 }
 
-/** UI: Generate level with current slider values */
+/** Place civilians and guards from a level data object with explicit positions */
+function placeEntitiesFromLevelData(levelData) {
+    GameState.entities.civilians = [];
+    GameState.entities.guards = [];
+
+    for (const c of levelData.civilians) {
+        // Civilians are 24px tall, placed centered in tile, standing on surface
+        const px = c.col * TILE_SIZE + (TILE_SIZE - 24) / 2;
+        const py = (c.row - 1) * TILE_SIZE + TILE_SIZE - 24;
+        GameState.entities.civilians.push(createCivilian(px, py));
+    }
+
+    for (const t of levelData.guards) {
+        // Guards are 32px tall, placed at tile top of the row above ground
+        const px = t.col * TILE_SIZE;
+        const py = (t.row - 1) * TILE_SIZE;
+        GameState.entities.guards.push(createGuard(px, py));
+    }
+
+    assignGuards(GameState);
+}
+
+/** Load Level 1: purpose-built level for the vertical slice */
+function loadLevel1() {
+    currentLevel = 'level1';
+    MAP_COLS = LEVEL_1.cols;
+    MAP_ROWS = LEVEL_1.rows;
+    MAP_DATA = [...LEVEL_1.map];
+    tileMap = MAP_DATA.map(row => Array.from(row).map(ch => ch === '='));
+    resizeCanvas();
+    findAndSetSpawn();
+    placeEntitiesFromLevelData(LEVEL_1);
+    findAndSetExit();
+}
+
+/** UI: Generate room-grid level with current slider values */
 function doGenerate() {
-    const width = parseInt(document.getElementById('gen-width').value);
-    const height = parseInt(document.getElementById('gen-height').value);
     const density = parseInt(document.getElementById('gen-density').value) / 100;
     const minSanity = parseInt(document.getElementById('gen-sanity').value);
     const seed = parseInt(document.getElementById('gen-seed').value) || 42;
-    const grid = generateLevel(width, height, density, minSanity, seed);
-    applyLevel(grid, width, height);
+    const totalW = GRID_COLS * ROOM_W;
+    const totalH = GRID_ROWS * ROOM_H;
+    const grid = generateLevel(totalW, totalH, density, minSanity, seed);
+    applyLevel(grid, totalW, totalH);
 }
 
 /** UI: Random seed then generate */
@@ -1147,7 +1868,7 @@ let GameState = {
     },
     entities: {
         civilians: [],
-        threats: [],
+        guards: [],
     },
     level: {
         tileMap: tileMap,
@@ -1159,7 +1880,7 @@ let GameState = {
         timeElapsed: 0,
         civiliansEaten: 0,
         damagesTaken: 0,
-        threatsPounced: 0,
+        guardsPounced: 0,
     },
 };
 
@@ -1198,7 +1919,7 @@ function updateGamePhase(state) {
                     `Time: ${timeStr}`,
                     `Civilians Eaten: ${state.stats.civiliansEaten} / ${totalCivs}`,
                     `HP Remaining: ${state.zombie.hp} / ${state.zombie.maxHP}`,
-                    `Threats Pounced: ${state.stats.threatsPounced}`,
+                    `Guards Pounced: ${state.stats.guardsPounced}`,
                 ].join('<br>');
                 levelCompleteOverlay.classList.add('active');
                 break;
@@ -1246,18 +1967,25 @@ function resetGameState() {
     GameState.sanity.value = 12;
     sanitySlider.value = 12;
 
-    // Reset entities
+    // Reset entities — use level-specific placement
     GameState.entities.civilians = [];
-    GameState.entities.threats = [];
-    placeCiviliansOnGauntlet();
-    placeThreatsOnMap();
-    assignGuards(GameState);
+    GameState.entities.guards = [];
+    if (currentLevel === 'level1') {
+        placeEntitiesFromLevelData(LEVEL_1);
+    } else if (currentLevel === 'generated' && generateLevel._lastRoomGrid) {
+        const entityRng = splitmix32((parseInt(document.getElementById('gen-seed').value) || 42) + 7);
+        placeEntitiesFromRoomGrid(generateLevel._lastRoomGrid, generateLevel._lastPath, entityRng);
+    } else {
+        placeCiviliansOnGauntlet();
+        placeGuardsOnMap();
+        assignGuards(GameState);
+    }
 
     // Reset stats
     GameState.stats.timeElapsed = 0;
     GameState.stats.civiliansEaten = 0;
     GameState.stats.damagesTaken = 0;
-    GameState.stats.threatsPounced = 0;
+    GameState.stats.guardsPounced = 0;
 
     // Reset drift
     drift.timer = 0;
@@ -1494,30 +2222,30 @@ function checkEatCollision(state) {
 }
 
 function broadcastScream(state, x, y) {
-    // Alert all threats within scream range
-    for (const threat of state.entities.threats) {
-        if (!threat.alive) continue;
-        const dx = threat.x + threat.width / 2 - x;
-        const dy = threat.y + threat.height / 2 - y;
+    // Alert all guards within scream range
+    for (const guard of state.entities.guards) {
+        if (!guard.alive) continue;
+        const dx = guard.x + guard.width / 2 - x;
+        const dy = guard.y + guard.height / 2 - y;
         const dist = Math.sqrt(dx * dx + dy * dy);
         if (dist <= SCREAM_ALERT_RANGE) {
-            threat.state = 'RESPONDING_TO_SCREAM';
-            threat.alertTarget = { x: x, y: y };
-            threat.alertTimer = SCREAM_ALERT_DURATION;
+            guard.state = 'RESPONDING_TO_SCREAM';
+            guard.alertTarget = { x: x, y: y };
+            guard.alertTimer = SCREAM_ALERT_DURATION;
         }
     }
     triggerShake(1.5, 0.08);
 }
 
 // ============================================================
-// THREAT SYSTEM
-// Threat entities guard civilians and chase the zombie. AI states:
+// GUARD SYSTEM
+// Guard entities guard civilians and chase the zombie. AI states:
 // GUARD_PATROL — patrol near assigned civilian (or patrolCenter)
 // CHASE — pursue zombie within leash distance
 // RESPONDING_TO_SCREAM — move to scream location on alert
 // ============================================================
 
-function createThreat(x, y) {
+function createGuard(x, y) {
     return {
         x: x, y: y,
         width: 32, height: 32,
@@ -1549,29 +2277,29 @@ function areSamePlatform(entityA, entityB) {
     return true;
 }
 
-/** Assign each threat to guard the nearest alive same-platform civilian.
- *  Prefer civilians not already guarded by 2+ threats. */
+/** Assign each guard to guard the nearest alive same-platform civilian.
+ *  Prefer civilians not already guarded by 2+ guards. */
 function assignGuards(state) {
     // Count guards per civilian
     const guardCounts = new Map();
-    for (const threat of state.entities.threats) {
-        if (!threat.alive) continue;
-        threat.guardedCivilian = null;
+    for (const guard of state.entities.guards) {
+        if (!guard.alive) continue;
+        guard.guardedCivilian = null;
     }
 
-    for (const threat of state.entities.threats) {
-        if (!threat.alive) continue;
+    for (const guard of state.entities.guards) {
+        if (!guard.alive) continue;
 
         let bestCiv = null;
         let bestDist = Infinity;
 
         for (const civ of state.entities.civilians) {
             if (!civ.alive) continue;
-            if (!areSamePlatform(threat, civ)) continue;
+            if (!areSamePlatform(guard, civ)) continue;
 
             const count = guardCounts.get(civ) || 0;
-            const dx = threat.x - civ.x;
-            const dy = threat.y - civ.y;
+            const dx = guard.x - civ.x;
+            const dy = guard.y - civ.y;
             const dist = Math.sqrt(dx * dx + dy * dy);
 
             // Prefer civilians with fewer guards, then nearest
@@ -1583,126 +2311,126 @@ function assignGuards(state) {
             }
         }
 
-        threat.guardedCivilian = bestCiv;
+        guard.guardedCivilian = bestCiv;
         if (bestCiv) {
-            threat.patrolCenter = bestCiv.x + bestCiv.width / 2;
+            guard.patrolCenter = bestCiv.x + bestCiv.width / 2;
             guardCounts.set(bestCiv, (guardCounts.get(bestCiv) || 0) + 1);
         }
     }
 }
 
-function updateThreats(state, dt) {
-    for (const threat of state.entities.threats) {
-        if (!threat.alive) continue;
+function updateGuards(state, dt) {
+    for (const guard of state.entities.guards) {
+        if (!guard.alive) continue;
 
         const zx = state.zombie.x + state.zombie.width / 2;
         const zy = state.zombie.y + state.zombie.height / 2;
-        const tx = threat.x + threat.width / 2;
-        const ty = threat.y + threat.height / 2;
+        const tx = guard.x + guard.width / 2;
+        const ty = guard.y + guard.height / 2;
         const distToZombie = Math.sqrt((zx - tx) * (zx - tx) + (zy - ty) * (zy - ty));
 
         // Leash anchor: guarded civilian's center, or patrolCenter
-        let anchorX = threat.patrolCenter;
-        if (threat.guardedCivilian && threat.guardedCivilian.alive) {
-            anchorX = threat.guardedCivilian.x + threat.guardedCivilian.width / 2;
-            threat.patrolCenter = anchorX;
+        let anchorX = guard.patrolCenter;
+        if (guard.guardedCivilian && guard.guardedCivilian.alive) {
+            anchorX = guard.guardedCivilian.x + guard.guardedCivilian.width / 2;
+            guard.patrolCenter = anchorX;
         }
         const distFromAnchor = Math.abs(tx - anchorX);
 
         // AI priority: RESPONDING_TO_SCREAM > CHASE > GUARD_PATROL
-        if (threat.state === 'RESPONDING_TO_SCREAM') {
+        if (guard.state === 'RESPONDING_TO_SCREAM') {
             // Move toward alert target
-            const dx = threat.alertTarget.x - tx;
+            const dx = guard.alertTarget.x - tx;
             if (Math.abs(dx) > 4) {
-                threat.vx = Math.sign(dx) * THREAT_CHASE_SPEED;
-                threat.facingRight = dx > 0;
+                guard.vx = Math.sign(dx) * GUARD_CHASE_SPEED;
+                guard.facingRight = dx > 0;
             } else {
-                threat.vx = 0;
+                guard.vx = 0;
             }
-            threat.alertTimer -= dt;
-            if (threat.alertTimer <= 0 || Math.abs(dx) <= 4) {
-                threat.state = 'GUARD_PATROL';
-                threat.alertTimer = 0;
+            guard.alertTimer -= dt;
+            if (guard.alertTimer <= 0 || Math.abs(dx) <= 4) {
+                guard.state = 'GUARD_PATROL';
+                guard.alertTimer = 0;
             }
-        } else if (distToZombie < THREAT_DETECTION_RANGE && distFromAnchor < THREAT_LEASH_DISTANCE) {
+        } else if (distToZombie < GUARD_DETECTION_RANGE && distFromAnchor < GUARD_LEASH_DISTANCE) {
             // CHASE
-            threat.state = 'CHASE';
+            guard.state = 'CHASE';
             const dx = zx - tx;
-            threat.vx = Math.sign(dx) * THREAT_CHASE_SPEED;
-            threat.facingRight = dx > 0;
+            guard.vx = Math.sign(dx) * GUARD_CHASE_SPEED;
+            guard.facingRight = dx > 0;
 
             // Break chase if too far from anchor
-            if (distFromAnchor >= THREAT_LEASH_DISTANCE) {
-                threat.state = 'GUARD_PATROL';
+            if (distFromAnchor >= GUARD_LEASH_DISTANCE) {
+                guard.state = 'GUARD_PATROL';
             }
         } else {
             // GUARD_PATROL
-            threat.state = 'GUARD_PATROL';
-            const patrolRange = threat.guardedCivilian && threat.guardedCivilian.alive
-                ? THREAT_GUARD_RANGE : THREAT_PATROL_RANGE;
+            guard.state = 'GUARD_PATROL';
+            const patrolRange = guard.guardedCivilian && guard.guardedCivilian.alive
+                ? GUARD_WATCH_RANGE : GUARD_PATROL_RANGE;
 
             // Patrol back and forth around anchor
             const distToAnchor = tx - anchorX;
             if (Math.abs(distToAnchor) > patrolRange) {
                 // Beyond patrol range — reverse toward anchor
-                threat.vx = distToAnchor > 0 ? -THREAT_SPEED : THREAT_SPEED;
-                threat.facingRight = threat.vx > 0;
-            } else if (threat.vx === 0) {
+                guard.vx = distToAnchor > 0 ? -GUARD_SPEED : GUARD_SPEED;
+                guard.facingRight = guard.vx > 0;
+            } else if (guard.vx === 0) {
                 // Start patrolling
-                threat.vx = (threat.facingRight ? 1 : -1) * THREAT_SPEED;
+                guard.vx = (guard.facingRight ? 1 : -1) * GUARD_SPEED;
             } else {
                 // Continue patrolling at patrol speed
-                threat.vx = Math.sign(threat.vx) * THREAT_SPEED;
+                guard.vx = Math.sign(guard.vx) * GUARD_SPEED;
             }
         }
 
         // Edge avoidance: check ground ahead and wall ahead
-        const moveDir = threat.vx > 0 ? 1 : -1;
-        const checkX = moveDir > 0 ? threat.x + threat.width : threat.x - 1;
+        const moveDir = guard.vx > 0 ? 1 : -1;
+        const checkX = moveDir > 0 ? guard.x + guard.width : guard.x - 1;
         const checkCol = Math.floor(checkX / TILE_SIZE);
-        const footRow = Math.floor((threat.y + threat.height) / TILE_SIZE);
-        const headRow = Math.floor(threat.y / TILE_SIZE);
+        const footRow = Math.floor((guard.y + guard.height) / TILE_SIZE);
+        const headRow = Math.floor(guard.y / TILE_SIZE);
 
         const hasGround = checkCol >= 0 && checkCol < MAP_COLS && footRow < MAP_ROWS && isSolid(checkCol, footRow);
         const hasWall = checkCol >= 0 && checkCol < MAP_COLS && isSolid(checkCol, headRow);
 
         if (!hasGround || hasWall) {
-            threat.vx = -threat.vx;
-            threat.facingRight = !threat.facingRight;
+            guard.vx = -guard.vx;
+            guard.facingRight = !guard.facingRight;
         }
 
         // Apply movement
-        threat.x += threat.vx * dt;
+        guard.x += guard.vx * dt;
 
         // World boundary clamp
-        if (threat.x < 0) { threat.x = 0; threat.vx = Math.abs(threat.vx); threat.facingRight = true; }
-        if (threat.x + threat.width > MAP_COLS * TILE_SIZE) {
-            threat.x = MAP_COLS * TILE_SIZE - threat.width;
-            threat.vx = -Math.abs(threat.vx);
-            threat.facingRight = false;
+        if (guard.x < 0) { guard.x = 0; guard.vx = Math.abs(guard.vx); guard.facingRight = true; }
+        if (guard.x + guard.width > MAP_COLS * TILE_SIZE) {
+            guard.x = MAP_COLS * TILE_SIZE - guard.width;
+            guard.vx = -Math.abs(guard.vx);
+            guard.facingRight = false;
         }
     }
 }
 
-function renderThreats(state) {
-    for (const threat of state.entities.threats) {
-        if (!threat.alive) continue;
+function renderGuards(state) {
+    for (const guard of state.entities.guards) {
+        if (!guard.alive) continue;
 
         // Color by state: red (patrol), magenta (chase), yellow (scream response)
-        if (threat.state === 'RESPONDING_TO_SCREAM') {
+        if (guard.state === 'RESPONDING_TO_SCREAM') {
             ctx.fillStyle = '#ffdd00';
-        } else if (threat.state === 'CHASE') {
+        } else if (guard.state === 'CHASE') {
             ctx.fillStyle = '#ff00ff';
         } else {
             ctx.fillStyle = '#ff3333';
         }
-        ctx.fillRect(threat.x, threat.y, threat.width, threat.height);
+        ctx.fillRect(guard.x, guard.y, guard.width, guard.height);
 
         // Cyan outline when guarding a civilian
-        if (threat.guardedCivilian && threat.guardedCivilian.alive) {
+        if (guard.guardedCivilian && guard.guardedCivilian.alive) {
             ctx.strokeStyle = '#00ddff';
             ctx.lineWidth = 2;
-            ctx.strokeRect(threat.x, threat.y, threat.width, threat.height);
+            ctx.strokeRect(guard.x, guard.y, guard.width, guard.height);
         }
 
         // "!" label
@@ -1710,15 +2438,15 @@ function renderThreats(state) {
         ctx.font = 'bold 16px Consolas, monospace';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText('!', threat.x + threat.width / 2, threat.y + threat.height / 2);
+        ctx.fillText('!', guard.x + guard.width / 2, guard.y + guard.height / 2);
     }
 }
 
-/** Place threats on valid standing positions near civilians.
- *  Each threat picks the nearest same-row position to a civilian,
+/** Place guards on valid standing positions near civilians.
+ *  Each guard picks the nearest same-row position to a civilian,
  *  offset by 2-4 tiles so it's nearby but not overlapping. */
-function placeThreatsOnMap() {
-    GameState.entities.threats = [];
+function placeGuardsOnMap() {
+    GameState.entities.guards = [];
     const positions = findStandingPositions();
     if (positions.length === 0) return;
 
@@ -1779,35 +2507,35 @@ function placeThreatsOnMap() {
 
         const px = bestPos.col * TILE_SIZE + (TILE_SIZE - 32) / 2;
         const py = bestPos.row * TILE_SIZE + TILE_SIZE - 32;
-        GameState.entities.threats.push(createThreat(px, py));
+        GameState.entities.guards.push(createGuard(px, py));
     }
 }
 
 // ============================================================
-// THREAT COLLISION + POUNCE
-// Zombie-threat overlap: at Feral (sanity < threshold) the
-// zombie pounces and kills the threat. Otherwise, takes damage.
+// GUARD COLLISION + POUNCE
+// Zombie-guard overlap: at Feral (sanity < threshold) the
+// zombie pounces and kills the guard. Otherwise, takes damage.
 // ============================================================
 
-function checkThreatCollision(state) {
-    for (const threat of state.entities.threats) {
-        if (!threat.alive) continue;
-        if (!aabbOverlap(state.zombie, threat)) continue;
+function checkGuardCollision(state) {
+    for (const guard of state.entities.guards) {
+        if (!guard.alive) continue;
+        if (!aabbOverlap(state.zombie, guard)) continue;
 
         if (sanity < POUNCE_SANITY_THRESHOLD) {
-            // POUNCE — kill the threat
-            threat.alive = false;
-            state.stats.threatsPounced++;
+            // POUNCE — kill the guard
+            guard.alive = false;
+            state.stats.guardsPounced++;
 
             // Visual feedback: large particle burst + strong shake
-            emitDust(threat.x + threat.width / 2, threat.y + threat.height / 2, 8, 0, 80);
+            emitDust(guard.x + guard.width / 2, guard.y + guard.height / 2, 8, 0, 80);
             triggerShake(4, 0.15);
 
             // Reassign remaining guards
             assignGuards(state);
         } else {
-            // DAMAGE — threat hurts zombie (respects iframes)
-            damageZombie(state, THREAT_DAMAGE);
+            // DAMAGE — guard hurts zombie (respects iframes)
+            damageZombie(state, GUARD_DAMAGE);
         }
     }
 }
@@ -2669,8 +3397,8 @@ function render() {
     // --- Draw civilians (behind zombie in z-order) ---
     renderCivilians(GameState);
 
-    // --- Draw threats (behind zombie in z-order) ---
-    renderThreats(GameState);
+    // --- Draw guards (behind zombie in z-order) ---
+    renderGuards(GameState);
 
     // --- Draw zombie with squash/stretch ---
     const tier = getSanityTier(sanity);
@@ -2768,6 +3496,63 @@ function render() {
     // --- Feral drift directional vignette (screen-space) ---
     // Brief flash on the side the drift pushed toward.
     renderDriftVignette();
+
+    // --- Player-facing HUD (screen-space, drawn last) ---
+    renderHUD();
+}
+
+/** Draw player-facing HUD: sanity bar + HP hearts */
+function renderHUD() {
+    const barX = 16, barY = 20;
+    const barW = 160, barH = 12;
+
+    // --- Sanity label ---
+    ctx.font = '10px Consolas, monospace';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'bottom';
+    ctx.fillStyle = '#fff';
+    ctx.fillText('SANITY', barX, barY - 2);
+
+    // --- Sanity bar background ---
+    ctx.fillStyle = '#333';
+    ctx.fillRect(barX, barY, barW, barH);
+    ctx.strokeStyle = '#555';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(barX, barY, barW, barH);
+
+    // --- Sanity bar fill ---
+    const tier = getSanityTier(sanity);
+    const fillW = Math.max(0, (sanity / 12) * barW);
+    if (fillW > 0) {
+        switch (tier) {
+            case 'Lucid':    ctx.fillStyle = '#4a4'; break;
+            case 'Slipping': ctx.fillStyle = '#da4'; break;
+            case 'Feral':    ctx.fillStyle = '#d44'; break;
+            default:         ctx.fillStyle = '#d44'; break;
+        }
+        ctx.fillRect(barX + 1, barY + 1, fillW - 2, barH - 2);
+    }
+
+    // --- HP hearts ---
+    const heartY = barY + barH + 6;
+    const heartSize = 10;
+    const heartGap = 3;
+    for (let i = 0; i < zombie.maxHP; i++) {
+        const hx = barX + i * (heartSize + heartGap);
+        if (i < zombie.hp) {
+            ctx.fillStyle = '#e33';
+        } else {
+            ctx.fillStyle = '#555';
+        }
+        // Simple diamond shape
+        ctx.beginPath();
+        ctx.moveTo(hx + heartSize / 2, heartY);
+        ctx.lineTo(hx + heartSize, heartY + heartSize / 2);
+        ctx.lineTo(hx + heartSize / 2, heartY + heartSize);
+        ctx.lineTo(hx, heartY + heartSize / 2);
+        ctx.closePath();
+        ctx.fill();
+    }
 }
 
 // ============================================================
@@ -2782,13 +3567,13 @@ const debugPanel = document.getElementById('debug-panel');
 function updateDebugPanel() {
     const tier = getSanityTier(sanity);
     const aliveCivs = GameState.entities.civilians.filter(c => c.alive).length;
-    const aliveThreats = GameState.entities.threats.filter(t => t.alive).length;
+    const aliveGuards = GameState.entities.guards.filter(t => t.alive).length;
     const lines = [
         `Phase: ${GameState.phase}`,
         `Sanity: ${sanity.toFixed(1)} (${tier})${GameState.sanity.drainEnabled ? ' [DRAIN]' : ''}`,
         `HP: ${zombie.hp} / ${zombie.maxHP}${zombie.invincibleTimer > 0 ? ' [IFRAME]' : ''}`,
         `Civilians: ${aliveCivs} alive, ${GameState.stats.civiliansEaten} eaten`,
-        `Threats: ${aliveThreats} alive, ${GameState.stats.threatsPounced} pounced`,
+        `Guards: ${aliveGuards} alive, ${GameState.stats.guardsPounced} pounced`,
         `Velocity: (${zombie.vx.toFixed(0)}, ${zombie.vy.toFixed(0)})`,
         `Speed: ${Math.abs(zombie.vx).toFixed(0)} / ${getMaxSpeed().toFixed(0)}`,
         `Grounded: ${zombie.grounded}`,
@@ -2916,14 +3701,14 @@ const tuningParams = [
     { label: 'Flee Range', key: 'CIVILIAN_FLEE_RANGE', min: 32, max: 192, step: 8 },
     { label: 'Wander Spd', key: 'CIVILIAN_WANDER_SPEED', min: 10, max: 80, step: 5 },
 
-    { section: 'Threat AI' },
-    { label: 'Patrol Spd', key: 'THREAT_SPEED', min: 40, max: 240, step: 10 },
-    { label: 'Chase Spd', key: 'THREAT_CHASE_SPEED', min: 80, max: 400, step: 10 },
-    { label: 'Damage', key: 'THREAT_DAMAGE', min: 1, max: 5, step: 1 },
-    { label: 'Detect Rng', key: 'THREAT_DETECTION_RANGE', min: 64, max: 320, step: 16 },
-    { label: 'Guard Rng', key: 'THREAT_GUARD_RANGE', min: 16, max: 192, step: 8 },
-    { label: 'Patrol Rng', key: 'THREAT_PATROL_RANGE', min: 32, max: 256, step: 16 },
-    { label: 'Leash Dist', key: 'THREAT_LEASH_DISTANCE', min: 64, max: 320, step: 16 },
+    { section: 'Guard AI' },
+    { label: 'Patrol Spd', key: 'GUARD_SPEED', min: 40, max: 240, step: 10 },
+    { label: 'Chase Spd', key: 'GUARD_CHASE_SPEED', min: 80, max: 400, step: 10 },
+    { label: 'Damage', key: 'GUARD_DAMAGE', min: 1, max: 5, step: 1 },
+    { label: 'Detect Rng', key: 'GUARD_DETECTION_RANGE', min: 64, max: 320, step: 16 },
+    { label: 'Watch Rng', key: 'GUARD_WATCH_RANGE', min: 16, max: 192, step: 8 },
+    { label: 'Patrol Rng', key: 'GUARD_PATROL_RANGE', min: 32, max: 256, step: 16 },
+    { label: 'Leash Dist', key: 'GUARD_LEASH_DISTANCE', min: 64, max: 320, step: 16 },
     { label: 'Pounce San', key: 'POUNCE_SANITY_THRESHOLD', min: 1, max: 8, step: 1 },
 ];
 
@@ -2952,44 +3737,30 @@ function buildTuningPanel() {
         `;
     }
 
-    // Level Generator section
+    // Level Generator section (Room Grid)
     html += `<div class="section-label">Level Generator</div>`;
     html += `
-        <label><span>Width</span>
-            <input type="range" id="gen-width" min="20" max="60" step="1" value="${MAP_COLS}">
-            <span id="gen-width-val" style="min-width:45px;text-align:right">${MAP_COLS}</span>
-        </label>
-        <label><span>Height</span>
-            <input type="range" id="gen-height" min="15" max="35" step="1" value="${MAP_ROWS}">
-            <span id="gen-height-val" style="min-width:45px;text-align:right">${MAP_ROWS}</span>
+        <label><span>Grid</span>
+            <span style="min-width:90px;text-align:right;font-size:10px">${GRID_COLS}x${GRID_ROWS} rooms (${GRID_COLS * ROOM_W}x${GRID_ROWS * ROOM_H} tiles)</span>
         </label>
         <label><span>Density</span>
             <input type="range" id="gen-density" min="10" max="90" step="5" value="50">
             <span id="gen-density-val" style="min-width:45px;text-align:right">0.5</span>
         </label>
         <label><span>Min Sanity</span>
-            <input type="range" id="gen-sanity" min="1" max="12" step="1" value="7">
-            <span id="gen-sanity-val" style="min-width:45px;text-align:right">7</span>
+            <input type="range" id="gen-sanity" min="1" max="12" step="1" value="12">
+            <span id="gen-sanity-val" style="min-width:45px;text-align:right">12</span>
         </label>
         <label><span>Seed</span>
             <input type="number" id="gen-seed" value="42" class="gen-seed-input">
         </label>
-        <label style="cursor:pointer"><span>Pacing</span>
-            <input type="checkbox" id="gen-pacing" ${PACING_ENABLED ? 'checked' : ''} style="width:auto;margin-left:8px">
-        </label>
-        <label><span>Diff Scale</span>
-            <input type="range" id="gen-diff-scale" min="0.5" max="1.5" step="0.1" value="${PACING_DIFFICULTY_SCALE}">
-            <span id="gen-diff-scale-val" style="min-width:45px;text-align:right">${PACING_DIFFICULTY_SCALE.toFixed(1)}</span>
-        </label>
         <div class="gen-button-row">
-            <button onclick="doGenerate()">Generate</button>
+            <button onclick="doGenerate()">Room Grid</button>
             <button onclick="doRandomGenerate()">Random</button>
-            <button onclick="loadPresetGauntlet()">Gauntlet</button>
         </div>
-        <div class="section-label">Entities</div>
         <div class="gen-button-row">
-            <button onclick="placeCiviliansOnGauntlet()">Respawn Civs</button>
-            <button onclick="placeThreatsOnMap(); assignGuards(GameState);">Respawn Threats</button>
+            <button onclick="loadLevel1()">Level 1</button>
+            <button onclick="loadPresetGauntlet()">Gauntlet</button>
         </div>
     `;
 
@@ -3011,24 +3782,11 @@ function buildTuningPanel() {
     }
 
     // Attach listeners for generator sliders
-    document.getElementById('gen-width').addEventListener('input', function() {
-        document.getElementById('gen-width-val').textContent = this.value;
-    });
-    document.getElementById('gen-height').addEventListener('input', function() {
-        document.getElementById('gen-height-val').textContent = this.value;
-    });
     document.getElementById('gen-density').addEventListener('input', function() {
         document.getElementById('gen-density-val').textContent = (this.value / 100).toFixed(1);
     });
     document.getElementById('gen-sanity').addEventListener('input', function() {
         document.getElementById('gen-sanity-val').textContent = this.value;
-    });
-    document.getElementById('gen-pacing').addEventListener('change', function() {
-        PACING_ENABLED = this.checked;
-    });
-    document.getElementById('gen-diff-scale').addEventListener('input', function() {
-        PACING_DIFFICULTY_SCALE = parseFloat(this.value);
-        document.getElementById('gen-diff-scale-val').textContent = PACING_DIFFICULTY_SCALE.toFixed(1);
     });
 }
 
@@ -3058,9 +3816,9 @@ function gameLoop(currentTime) {
             GameState.stats.timeElapsed += dt;
             updatePhysics(dt);
             updateCivilians(GameState, dt);
-            updateThreats(GameState, dt);
+            updateGuards(GameState, dt);
             checkEatCollision(GameState);
-            checkThreatCollision(GameState);
+            checkGuardCollision(GameState);
             updateDrift(dt);
             updateJuice(dt);
         }
@@ -3082,11 +3840,7 @@ function gameLoop(currentTime) {
 function init() {
     buildTuningPanel();
     updateSanityUI();
-    findAndSetSpawn();
-    placeCiviliansOnGauntlet();
-    placeThreatsOnMap();
-    assignGuards(GameState);
-    findAndSetExit();
+    loadLevel1();
     requestAnimationFrame(gameLoop);
 }
 

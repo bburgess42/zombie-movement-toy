@@ -49,16 +49,16 @@ The movement toy exists. Now make it feel perfect.
 ---
 
 ## PHASE 2: CORE GAME LOOP
-**Goal:** Add the minimum systems that turn the toy into a game — objectives, threats, rewards.
+**Goal:** Add the minimum systems that turn the toy into a game — objectives, guards, rewards.
 **Skills:** gamedev-design-doc, gamedev-systems-balance, gamedev-code-architecture
 
 ### Step 2.1: Core Loop Mechanic Spec
 **Prompt:**
-> "Using the design-doc skill, write a mechanic spec for the core game loop of Brains for Breakfast. The loop is: explore level → find civilians → eat civilians (restore sanity, trigger death scream) → avoid/evade threats → reach level exit. The gentleman zombie twist is that the player WANTS to maintain composure (high sanity = more control) but NEEDS low sanity for certain traversal challenges. Civilians flee the zombie and seek threats for protection, creating pursuit and risk. Spec out each element of the loop using the mechanic-spec template. Apply Lens #33 (Meaningful Choices) to every player decision point."
+> "Using the design-doc skill, write a mechanic spec for the core game loop of Brains for Breakfast. The loop is: explore level → find civilians → eat civilians (restore sanity, trigger death scream) → avoid/evade guards → reach level exit. The gentleman zombie twist is that the player WANTS to maintain composure (high sanity = more control) but NEEDS low sanity for certain traversal challenges. Civilians flee the zombie and seek guards for protection, creating pursuit and risk. Spec out each element of the loop using the mechanic-spec template. Apply Lens #33 (Meaningful Choices) to every player decision point."
 
-### Step 2.2: Civilian-Threat Ecology Design
+### Step 2.2: Civilian-Guard Ecology Design
 **Prompt:**
-> "Using the systems-balance skill, design the civilian-threat ecology system. Living civilians replace static brain pickups — the zombie must catch and eat civilians to restore sanity. Civilians flee the zombie and seek nearby threats for protection. Threats guard assigned civilians and patrol near them (leash behavior). When the zombie eats a civilian, a death scream alerts threats within 128px for 3 seconds. As civilians are eaten, threats reassign to remaining civilians, consolidating defense and creating natural difficulty escalation. Model the faction interaction matrix (zombie, civilians, threats). Use the economy-spec template to map sanity, HP, civilian population, and threat attention as interconnected resources. Identify emergent behaviors (eat order, approach angle, scream management). Run edge cases: what if all civilians are eaten? What if a civilian flees off a platform? NO starvation mechanic — sanity drains at a constant rate regardless of civilian population."
+> "Using the systems-balance skill, design the civilian-guard ecology system. Living civilians replace static brain pickups — the zombie must catch and eat civilians to restore sanity. Civilians flee the zombie and seek nearby guards for protection. Guards guard assigned civilians and patrol near them (leash behavior). When the zombie eats a civilian, a death scream alerts guards within 128px for 3 seconds. As civilians are eaten, guards reassign to remaining civilians, consolidating defense and creating natural difficulty escalation. Model the faction interaction matrix (zombie, civilians, guards). Use the economy-spec template to map sanity, HP, civilian population, and guard attention as interconnected resources. Identify emergent behaviors (eat order, approach angle, scream management). Run edge cases: what if all civilians are eaten? What if a civilian flees off a platform? NO starvation mechanic — sanity drains at a constant rate regardless of civilian population."
 
 ### Step 2.3: Civilian Variant Design (Stretch)
 **Prompt:**
@@ -66,25 +66,25 @@ The movement toy exists. Now make it feel perfect.
 
 ### Step 2.4: Architecture Refactor
 **Prompt:**
-> "Using the code-architecture skill, evaluate the current codebase and plan a refactor to support the new game systems (civilian AI, threat AI, death scream events, sanity effects, level progression). Map the major systems and their communication needs. Recommend a component or module pattern that keeps things clean in a single-file HTML5 context. Specifically: design the state management so that save/load is possible (all game state serializable to JSON). Produce an architecture document with a migration plan — incremental extraction from the current code, not a rewrite."
+> "Using the code-architecture skill, evaluate the current codebase and plan a refactor to support the new game systems (civilian AI, guard AI, death scream events, sanity effects, level progression). Map the major systems and their communication needs. Recommend a component or module pattern that keeps things clean in a single-file HTML5 context. Specifically: design the state management so that save/load is possible (all game state serializable to JSON). Produce an architecture document with a migration plan — incremental extraction from the current code, not a rewrite."
 
 ---
 
-## PHASE 3: THREAT AI & CIVILIAN ECOLOGY
-**Goal:** Implement threat guard/chase/scream AI and tune the civilian-threat ecology.
+## PHASE 3: GUARD AI & CIVILIAN ECOLOGY
+**Goal:** Implement guard guard/chase/scream AI and tune the civilian-guard ecology.
 **Skills:** gamedev-code-architecture, gamedev-systems-balance, gamedev-level-design
 
-### Step 3.1: Threat AI Implementation
+### Step 3.1: Guard AI Implementation
 **Prompt:**
-> "Using the code-architecture skill, implement the threat AI state machine. States: GUARD_PATROL (patrol within guard range of assigned civilian), CHASE (pursue zombie within leash distance of guarded civilian), RESPOND_TO_SCREAM (move to death scream location at chase speed). Threats should guard assigned civilians, break chase when zombie exceeds leash distance, and respond to death screams with higher priority than chase. When a guarded civilian is eaten, reassign to nearest remaining civilian. Produce the state diagram first, then implement. Reference the design-patterns reference for appropriate AI patterns."
+> "Using the code-architecture skill, implement the guard AI state machine. States: GUARD_PATROL (patrol within guard range of assigned civilian), CHASE (pursue zombie within leash distance of guarded civilian), RESPOND_TO_SCREAM (move to death scream location at chase speed). Guards should guard assigned civilians, break chase when zombie exceeds leash distance, and respond to death screams with higher priority than chase. When a guarded civilian is eaten, reassign to nearest remaining civilian. Produce the state diagram first, then implement. Reference the design-patterns reference for appropriate AI patterns."
 
 ### Step 3.2: Civilian AI Implementation
 **Prompt:**
-> "Using the code-architecture skill, implement the civilian AI state machine. States: WANDER (slow random patrol at 30 px/s), FLEE (run from zombie at 60 px/s when within 96px), SEEK (drift toward nearest threat within 128px for protection). Civilians should reverse at platform edges (never fall off). Civilians are eaten on zombie overlap (AABB collision), restoring sanity and triggering a death scream. Produce the state machine, implement, then use the qa-testing skill to write edge case tests (what happens when a civilian is cornered? What if multiple civilians cluster near one threat?)."
+> "Using the code-architecture skill, implement the civilian AI state machine. States: WANDER (slow random patrol at 30 px/s), FLEE (run from zombie at 60 px/s when within 96px), SEEK (drift toward nearest guard within 128px for protection). Civilians should reverse at platform edges (never fall off). Civilians are eaten on zombie overlap (AABB collision), restoring sanity and triggering a death scream. Produce the state machine, implement, then use the qa-testing skill to write edge case tests (what happens when a civilian is cornered? What if multiple civilians cluster near one guard?)."
 
 ### Step 3.3: Ecology Balance Tuning
 **Prompt:**
-> "Using the systems-balance skill, civilians and threats are now in the game. Run a comprehensive balance pass. Test configurations: 5 civilians with 3 threats (default), 3 civilians with 2 threats (sparse), 7 civilians with 4 threats (dense). For each, observe: Does the player have meaningful eat-order choices? Does threat consolidation create natural difficulty escalation? Is the death scream range creating tension? Does the ecology self-regulate (later eats harder due to guard consolidation)? Produce a balance report with tuning recommendations for civilian count, threat count, guard range, leash distance, and scream range."
+> "Using the systems-balance skill, civilians and guards are now in the game. Run a comprehensive balance pass. Test configurations: 5 civilians with 3 guards (default), 3 civilians with 2 guards (sparse), 7 civilians with 4 guards (dense). For each, observe: Does the player have meaningful eat-order choices? Does guard consolidation create natural difficulty escalation? Is the death scream range creating tension? Does the ecology self-regulate (later eats harder due to guard consolidation)? Produce a balance report with tuning recommendations for civilian count, guard count, guard range, leash distance, and scream range."
 
 ---
 
@@ -94,7 +94,7 @@ The movement toy exists. Now make it feel perfect.
 
 ### Step 4.1: Level Progression Design
 **Prompt:**
-> "Using the level-design skill, design the level progression for v1. How many levels? What does each level introduce (new mechanic, new threat behavior, new civilian placement pattern)? Map the difficulty curve across the entire game using the pacing curve template. Each level should teach something before testing it. Apply Lens #60 (Interest Curves) to the full game arc, not just individual levels. Produce a level progression document."
+> "Using the level-design skill, design the level progression for v1. How many levels? What does each level introduce (new mechanic, new guard behavior, new civilian placement pattern)? Map the difficulty curve across the entire game using the pacing curve template. Each level should teach something before testing it. Apply Lens #60 (Interest Curves) to the full game arc, not just individual levels. Produce a level progression document."
 
 ### Step 4.2: Environmental Narrative
 **Prompt:**
@@ -102,11 +102,11 @@ The movement toy exists. Now make it feel perfect.
 
 ### Step 4.3: Level Generator Enhancement
 **Prompt:**
-> "Using the level-design skill and code-architecture skill, enhance the procedural generator to support the level progression design. The generator should accept parameters from the level progression document: difficulty target, civilian count and placement zones (free vs. guarded), threat count and guard assignments, which environmental narrative elements to inject. Each generated level should feel like a designed experience, not random output. Implement, then generate 3 levels at different progression points and evaluate each against the interest curve template."
+> "Using the level-design skill and code-architecture skill, enhance the procedural generator to support the level progression design. The generator should accept parameters from the level progression document: difficulty target, civilian count and placement zones (free vs. guarded), guard count and guard assignments, which environmental narrative elements to inject. Each generated level should feel like a designed experience, not random output. Implement, then generate 3 levels at different progression points and evaluate each against the interest curve template."
 
 ### Step 4.4: Authored Set Pieces
 **Prompt:**
-> "Using the level-design skill, identify 3-5 moments in the game that should be hand-authored rather than generated. These are the memorable moments: the first unguarded civilian (safe eat tutorial), the first guarded civilian with death scream consequence, the climax level with all threats consolidated around the last civilians. For each, sketch the layout, define the pacing beat by beat, place civilian and threat spawns deliberately, and mark the intended player emotional arc. These hand-crafted sections can be stitched into generated levels as 'event sections.'"
+> "Using the level-design skill, identify 3-5 moments in the game that should be hand-authored rather than generated. These are the memorable moments: the first unguarded civilian (safe eat tutorial), the first guarded civilian with death scream consequence, the climax level with all guards consolidated around the last civilians. For each, sketch the layout, define the pacing beat by beat, place civilian and guard spawns deliberately, and mark the intended player emotional arc. These hand-crafted sections can be stitched into generated levels as 'event sections.'"
 
 ---
 
@@ -120,7 +120,7 @@ The movement toy exists. Now make it feel perfect.
 
 ### Step 5.2: Character Art Pipeline
 **Prompt:**
-> "Using the art-direction skill, create the character art production pipeline. Characters needed: gentleman zombie (player, multiple sanity states), civilians (3-4 variants — different appearances for visual variety), threats (2-3 variants for different threat types in later milestones). For each character, create an AI image generation prompt using the ai-image-prompt template, including negative prompts for consistency. Define the post-processing pipeline (resize, palette reduction, outline addition, animation frame extraction). Produce a character asset list with status tracking."
+> "Using the art-direction skill, create the character art production pipeline. Characters needed: gentleman zombie (player, multiple sanity states), civilians (3-4 variants — different appearances for visual variety), guards (2-3 variants for different guard types in later milestones). For each character, create an AI image generation prompt using the ai-image-prompt template, including negative prompts for consistency. Define the post-processing pipeline (resize, palette reduction, outline addition, animation frame extraction). Produce a character asset list with status tracking."
 
 ### Step 5.3: Environment Art Pipeline
 **Prompt:**
@@ -128,7 +128,7 @@ The movement toy exists. Now make it feel perfect.
 
 ### Step 5.4: Visual Audit
 **Prompt:**
-> "Using the art-direction skill, perform a visual audit of all generated assets. Check every asset against the style guide: correct resolution? Correct palette? Consistent outline weight? Consistent perspective? Run the squint test — do characters read clearly against backgrounds at gameplay zoom? Run the gameplay readability test — can you instantly tell civilians from threats from the player? Document any inconsistencies and fix them."
+> "Using the art-direction skill, perform a visual audit of all generated assets. Check every asset against the style guide: correct resolution? Correct palette? Consistent outline weight? Consistent perspective? Run the squint test — do characters read clearly against backgrounds at gameplay zoom? Run the gameplay readability test — can you instantly tell civilians from guards from the player? Document any inconsistencies and fix them."
 
 ---
 
@@ -142,7 +142,7 @@ The movement toy exists. Now make it feel perfect.
 
 ### Step 6.2: SFX Mapping
 **Prompt:**
-> "Using the audio skill, map every game event to an audio event. Walk through every system: movement (footsteps per surface, jump, land, wall-slide), eating (civilian catch, death scream, sanity restore chime), combat (hit, damage taken, death), sanity (level change transitions, low-sanity audio distortion, high-sanity clarity), civilians (fleeing footsteps, idle ambient), threats (patrol footsteps, chase growl, scream response alert), UI (menu select, pause, level complete). Categorize as Critical/Important/Polish. Produce an SFX list with the sfx-list template. Note which sounds can be procedural/parameterized vs. which need fixed assets."
+> "Using the audio skill, map every game event to an audio event. Walk through every system: movement (footsteps per surface, jump, land, wall-slide), eating (civilian catch, death scream, sanity restore chime), combat (hit, damage taken, death), sanity (level change transitions, low-sanity audio distortion, high-sanity clarity), civilians (fleeing footsteps, idle ambient), guards (patrol footsteps, chase growl, scream response alert), UI (menu select, pause, level complete). Categorize as Critical/Important/Polish. Produce an SFX list with the sfx-list template. Note which sounds can be procedural/parameterized vs. which need fixed assets."
 
 ### Step 6.3: Music Design
 **Prompt:**
@@ -178,11 +178,11 @@ The movement toy exists. Now make it feel perfect.
 
 ### Step 8.1: Test Plan
 **Prompt:**
-> "Using the qa-testing skill, create a comprehensive test plan for Brains for Breakfast v1. Use the risk/testability matrix to prioritize. Identify: automated tests (physics edge cases, save/load integrity, civilian population math, threat guard assignment), manual tests (movement feel across all sanity levels, civilian flee AI, threat guard/chase/scream behavior, every level from generator), and playtest sessions (full game run-through, first-time player observation). For the procedural generator specifically: define property-based tests (invariants that must hold for ANY generated level — all platforms reachable, civilians and threats can spawn, no softlocks). Produce a test plan document."
+> "Using the qa-testing skill, create a comprehensive test plan for Brains for Breakfast v1. Use the risk/testability matrix to prioritize. Identify: automated tests (physics edge cases, save/load integrity, civilian population math, guard guard assignment), manual tests (movement feel across all sanity levels, civilian flee AI, guard guard/chase/scream behavior, every level from generator), and playtest sessions (full game run-through, first-time player observation). For the procedural generator specifically: define property-based tests (invariants that must hold for ANY generated level — all platforms reachable, civilians and guards can spawn, no softlocks). Produce a test plan document."
 
 ### Step 8.2: Balance Sweep
 **Prompt:**
-> "Using the systems-balance skill, run a final balance pass across all interconnected systems. Check: sanity risk/reward curve (is low sanity tempting enough?), civilian eat-order decisions (is there a dominant strategy?), threat guard consolidation (does difficulty escalate naturally as civilians are eaten?), death scream tension (does eating feel risky near threats?), difficulty progression (does the game get harder at the right rate?), level generator output distribution (are generated levels consistently fair and fun?). For each system, state whether it passes or needs tuning, and provide specific parameter changes for anything that fails."
+> "Using the systems-balance skill, run a final balance pass across all interconnected systems. Check: sanity risk/reward curve (is low sanity tempting enough?), civilian eat-order decisions (is there a dominant strategy?), guard guard consolidation (does difficulty escalate naturally as civilians are eaten?), death scream tension (does eating feel risky near guards?), difficulty progression (does the game get harder at the right rate?), level generator output distribution (are generated levels consistently fair and fun?). For each system, state whether it passes or needs tuning, and provide specific parameter changes for anything that fails."
 
 ### Step 8.3: Playtest Sessions
 **Prompt:**
@@ -229,7 +229,7 @@ The movement toy exists. Now make it feel perfect.
 | 0. Scope Lock | production | design-doc |
 | 1. Lock the Toy | ui-ux, systems-balance | level-design, qa-testing |
 | 2. Core Loop | design-doc, systems-balance | code-architecture |
-| 3. Threat AI & Ecology | code-architecture | systems-balance, qa-testing |
+| 3. Guard AI & Ecology | code-architecture | systems-balance, qa-testing |
 | 4. Levels & Content | level-design, narrative | code-architecture |
 | 5. Art | art-direction | — |
 | 6. Audio | audio | code-architecture |

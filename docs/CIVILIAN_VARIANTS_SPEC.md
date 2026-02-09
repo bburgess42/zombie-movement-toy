@@ -10,7 +10,7 @@
 
 ## 1. Player Fantasy
 
-**What the player gets to feel:** "I know which civilians are worth the risk." The satisfaction of reading a tactical situation and choosing the right target based on current sanity, nearby threats, HP, and time remaining.
+**What the player gets to feel:** "I know which civilians are worth the risk." The satisfaction of reading a tactical situation and choosing the right target based on current sanity, nearby guards, HP, and time remaining.
 
 **Power fantasy:** Predatory intelligence. The player isn't a mindless zombie lunging at anything that moves. They're a calculating survivor triaging targets by type, weighing cost against reward, and executing the smart play under pressure.
 
@@ -24,10 +24,10 @@
 
 **Core Loop of This Mechanic:**
 1. Player spots civilians on the map and visually identifies their type by color (blue = Standard, green = Sprinter, gold = Brainiac)
-2. Player assesses current state: sanity level, HP, nearby threats, distance to exit, time pressure
+2. Player assesses current state: sanity level, HP, nearby guards, distance to exit, time pressure
 3. Player selects a target type based on risk/reward tradeoff appropriate to the situation
-4. Player pursues and eats the target, dealing with type-specific consequences (chase duration, scream radius, threat proximity)
-5. Player adapts to the outcome: repositions after scream, manages new threat responses, reassesses remaining civilian pool
+4. Player pursues and eats the target, dealing with type-specific consequences (chase duration, scream radius, guard proximity)
+5. Player adapts to the outcome: repositions after scream, manages new guard responses, reassesses remaining civilian pool
 
 **Frequency:** Every time the player needs to eat (2-4 times per level), they make a variant-aware targeting decision. Target identification is continuous throughout navigation.
 
@@ -49,8 +49,8 @@ Inputs are identical to the base eat mechanic. The variant system changes output
 | Variant | Sanity Restored | Scream Range | Special Consequence |
 |---------|----------------|--------------|---------------------|
 | **Standard** (blue) | +4 | 4 tiles (128px) | Base death scream, normal hunter response |
-| **Sprinter** (green) | +2 | 4 tiles (128px) | Low reward but safe positioning (Sprinters flee far from threats) |
-| **Brainiac** (gold) | +6 | 6 tiles (192px) | 50% larger scream radius; always placed near threats, guaranteeing hunter proximity |
+| **Sprinter** (green) | +2 | 4 tiles (128px) | Low reward but safe positioning (Sprinters flee far from guards) |
+| **Brainiac** (gold) | +6 | 6 tiles (192px) | 50% larger scream radius; always placed near guards, guaranteeing hunter proximity |
 
 ### Outputs (Failure)
 
@@ -71,7 +71,7 @@ Inputs are identical to the base eat mechanic. The variant system changes output
 |-----------|----------|----------|----------|-------|---------------|
 | `sanityRestore` | 4 | 2 | 6 | 1-8 | Must sum to ~18 for typical 5-civilian composition |
 | `fleeSpeed` (px/s) | 60 | 120 | 40 | 30-150 | In prototype: movement tiles per turn (1 / 2 / 1). Sprinter moves 2 tiles when fleeing |
-| `fleeRange` (detection) | 3 tiles (96px) | 4 tiles (128px) | 3 tiles (96px) | 2-6 | Sprinter detects threats earlier, flees sooner |
+| `fleeRange` (detection) | 3 tiles (96px) | 4 tiles (128px) | 3 tiles (96px) | 2-6 | Sprinter detects guards earlier, flees sooner |
 | `seekRange` | 4 tiles | 0 (never seeks) | 4 tiles | 0-6 | Sprinter never moves toward hunters; relies on distance alone |
 | `screamRange` | 4 tiles | 4 tiles | 6 tiles | 2-8 | Brainiac's scream is 50% larger |
 | `color` | `#8be9fd` (cyan) | `#50fa7b` (green) | `#f1fa8c` (gold) | -- | Must be visually distinct at tile scale |
@@ -90,7 +90,7 @@ Inputs are identical to the base eat mechanic. The variant system changes output
 
 | Parameter | Standard | Sprinter | Brainiac | Notes |
 |-----------|----------|----------|----------|-------|
-| Placement bias | Random (existing logic) | Prefer positions far from threats | Within 5 tiles of a hunter or monster | Brainiac placement guarantees nearby danger |
+| Placement bias | Random (existing logic) | Prefer positions far from guards | Within 5 tiles of a hunter or monster | Brainiac placement guarantees nearby danger |
 | Min distance from zombie spawn | 5 tiles | 8 tiles | 3 tiles | Sprinters placed far; Brainiacs available early but risky |
 
 ---
@@ -104,8 +104,8 @@ Inputs are identical to the base eat mechanic. The variant system changes output
 | Monster kills a Brainiac before zombie reaches it | Brainiac is lost. No scream (monsters don't trigger death scream). Food supply reduced. Player should have prioritized it if they needed the +6. | Must-handle |
 | Involuntary eat targets a Sprinter (low sanity restore) | Involuntary eat applies to whatever civilian is adjacent, regardless of type. Getting only +2 from an involuntary eat on a Sprinter is a bad outcome — thematic (feral zombie can't be choosy). | Must-handle |
 | Sprinter flees into a dead-end platform | Sprinter is trapped and catchable. Map geometry creates local opportunities. No special escape logic needed. | Nice-to-handle |
-| Two Brainiacs placed near the same hunter cluster | Eating one draws hunters, making the second even more dangerous. Overlapping scream zones compound. Placement logic should distribute Brainiacs across different threat clusters when possible. | Nice-to-handle |
-| Level has zero hunters (chaos preset) | Brainiac's "always near threats" placement falls back to near-monster placement. If no threats exist, Brainiac is placed randomly — effectively a free +6 with no danger. This is acceptable for chaos preset. | Nice-to-handle |
+| Two Brainiacs placed near the same hunter cluster | Eating one draws hunters, making the second even more dangerous. Overlapping scream zones compound. Placement logic should distribute Brainiacs across different guard clusters when possible. | Nice-to-handle |
+| Level has zero hunters (chaos preset) | Brainiac's "always near guards" placement falls back to near-monster placement. If no guards exist, Brainiac is placed randomly — effectively a free +6 with no danger. This is acceptable for chaos preset. | Nice-to-handle |
 | All civilians killed by monsters before zombie eats any | Starvation mechanic activates (1.5x drain). Identical to base system. Variant types don't affect starvation logic. | Must-handle |
 
 ---
@@ -115,17 +115,17 @@ Inputs are identical to the base eat mechanic. The variant system changes output
 | Mechanic | Interaction Type | Description |
 |----------|-----------------|-------------|
 | **Death Scream** | Modified | Brainiac's scream range is 6 tiles vs. the base 4. Standard and Sprinter use base range. This means eating a Brainiac can alert hunters that would be safe from a Standard eat. |
-| **Hunter Guard Assignment** | Enabling | Hunters still guard nearest civilian. Brainiacs being placed near threats means hunters naturally cluster around them, creating "fortress" positions. Sprinters being far from threats means they're often unguarded — easy to reach but low reward. |
+| **Hunter Guard Assignment** | Enabling | Hunters still guard nearest civilian. Brainiacs being placed near guards means hunters naturally cluster around them, creating "fortress" positions. Sprinters being far from guards means they're often unguarded — easy to reach but low reward. |
 | **Sanity Economy** | Competing | Tighter total budget (18 vs 20) means the player can't afford to waste eats. A failed Sprinter chase that burns 2+ rounds of sanity drain may cost more sanity than it restores. |
 | **Sanity Tiers** | Complementary | At Feral tier (6 movement), the zombie can catch Sprinters more reliably — but risks involuntary eat on the wrong target. At Lucid (4 movement), Sprinters are harder to catch but the player has full control over target selection. |
 | **Involuntary Actions** | Conflicting | Involuntary eat targets the nearest adjacent civilian regardless of type. A Feral zombie adjacent to both a Sprinter (+2) and a Brainiac (+6) has no say in which gets eaten. This creates tension around positioning at low sanity. |
 | **Monster Ecology** | Complementary | Monsters kill civilians indiscriminately. A monster killing a Brainiac removes the best sanity source. A monster killing a Sprinter removes a low-value target (may be beneficial). Monsters create urgency to eat high-value targets early. |
 | **Starvation** | Unchanged | Starvation triggers when all civilians are dead, regardless of type. Variant types don't affect the 1.5x drain multiplier. |
-| **Consolidation (Hunter surplus)** | Modified | With Brainiacs placed near threats, surplus hunters that would normally patrol instead guard the Brainiac cluster, making fortress positions denser. |
+| **Consolidation (Hunter surplus)** | Modified | With Brainiacs placed near guards, surplus hunters that would normally patrol instead guard the Brainiac cluster, making fortress positions denser. |
 
 **Emergent Behaviors:**
 - **Triage under pressure:** When sanity is dropping and multiple civilian types are reachable, the player must quickly evaluate: "Do I need the +6 Brainiac and can I survive the scream, or should I play it safe with the +2 Sprinter and hope I catch it in time?"
-- **Monster-as-opener:** A monster killing a hunter near a Brainiac inadvertently creates an opening for the zombie to eat the Brainiac with reduced threat.
+- **Monster-as-opener:** A monster killing a hunter near a Brainiac inadvertently creates an opening for the zombie to eat the Brainiac with reduced guard.
 - **Sprinter bait:** At Feral tier, involuntary eat on a Sprinter (+2) is a terrible outcome. Players may deliberately avoid Sprinter-dense areas when at low sanity to prevent wasting an involuntary eat.
 - **Gold rush:** If the single Brainiac is still alive late-game and the zombie is low on sanity, it becomes a high-stakes "do or die" target. The player might route the entire endgame around reaching it.
 
@@ -154,7 +154,7 @@ Inputs are identical to the base eat mechanic. The variant system changes output
 
 | System | Change |
 |--------|--------|
-| Civilian AI (flee behavior) | Sprinter: `fleeRange` = 4 tiles (128px), moves 2 tiles when fleeing, never seeks threats for protection |
+| Civilian AI (flee behavior) | Sprinter: `fleeRange` = 4 tiles (128px), moves 2 tiles when fleeing, never seeks guards for protection |
 | Death scream / alert | Pass scream range as parameter per variant; Brainiac uses 6 tiles (192px) instead of base 4 |
 | Eat action (sanity restore) | Look up `sanityRestore` from eaten civilian's variant instead of using a single global value |
 | Involuntary eat | Same: use variant-specific `sanityRestore` |
@@ -169,7 +169,7 @@ Inputs are identical to the base eat mechanic. The variant system changes output
 | `standardSanity` | 4 | Sanity restored by eating a Standard |
 | `sprinterSanity` | 2 | Sanity restored by eating a Sprinter |
 | `brainiacSanity` | 6 | Sanity restored by eating a Brainiac |
-| `sprinterFleeRange` | 4 tiles | Wider threat detection |
+| `sprinterFleeRange` | 4 tiles | Wider guard detection |
 | `sprinterFleeSpeed` | 2 tiles/move | Tiles per flee action |
 | `brainiacScreamRange` | 6 tiles | 50% larger than base 4 |
 | `standardCount` | 2 | Per-level count |
@@ -177,9 +177,9 @@ Inputs are identical to the base eat mechanic. The variant system changes output
 | `brainiacCount` | 1 | Per-level count |
 
 **Placement logic:**
-1. Place Brainiacs first: find positions within 5 tiles of a threat. Distribute across different threat clusters.
+1. Place Brainiacs first: find positions within 5 tiles of a guard. Distribute across different guard clusters.
 2. Place Standards: use existing random placement logic.
-3. Place Sprinters last: prefer positions far from threats (>6 tiles) and far from zombie spawn (>8 tiles).
+3. Place Sprinters last: prefer positions far from guards (>6 tiles) and far from zombie spawn (>8 tiles).
 
 ### Prototyping Priority
 
@@ -221,20 +221,20 @@ Inputs are identical to the base eat mechanic. The variant system changes output
 Each variant embodies a distinct point on the risk/reward spectrum:
 
 #### Standard (Blue) — The Baseline
-- **Risk:** Moderate. Normal scream range (4 tiles). Placed randomly, so threat proximity varies.
+- **Risk:** Moderate. Normal scream range (4 tiles). Placed randomly, so guard proximity varies.
 - **Reward:** Moderate. +4 sanity, the reliable middle ground.
 - **Triangularity:** Standard is the "safe" choice — not because it's risk-free, but because it's predictable. The player knows exactly what they're getting. It exists to make the other two types meaningful by contrast.
 - **When dominant:** When the player has moderate sanity and moderate time. No urgency to maximize, no desperation to gamble.
 
 #### Sprinter (Green) — Time vs. Safety
-- **Risk:** Low direct danger (far from threats, unguarded). High opportunity cost (2-4 turns of pursuit = 1.8-3.6 sanity lost to drain while chasing).
+- **Risk:** Low direct danger (far from guards, unguarded). High opportunity cost (2-4 turns of pursuit = 1.8-3.6 sanity lost to drain while chasing).
 - **Reward:** Low. +2 sanity. Net sanity gain after pursuit costs: approximately +0.2 to +1.1.
 - **Triangularity:** The Sprinter inverts the usual risk. The danger isn't combat — it's the clock. Chasing a Sprinter is safe from hunters but burns the resource you're trying to restore. The sacrifice is time, not HP.
 - **When dominant:** High sanity + plenty of time remaining. The player can afford a safe, low-yield eat because they're not under pressure. Also useful when HP is low and combat must be avoided.
 - **When trap:** Low sanity + time pressure. The chase duration may drain more sanity than the +2 restores, creating a net negative. At this point, the Sprinter becomes a time sink.
 
 #### Brainiac (Gold) — Danger vs. Efficiency
-- **Risk:** Maximum. Placed near threats, 50% larger scream range (6 tiles), guaranteed hunter response post-eat.
+- **Risk:** Maximum. Placed near guards, 50% larger scream range (6 tiles), guaranteed hunter response post-eat.
 - **Reward:** Maximum. +6 sanity (150% of Standard). Most efficient single eat in the game.
 - **Triangularity:** The Brainiac is the classic "high risk, high reward" leg of the triangle. Eating one is the most efficient sanity restore available, but the player must survive the aftermath. The sacrifice is HP and safety.
 - **When dominant:** Desperate situations — sanity critically low and the zombie needs maximum restore to survive. Also when a nearby hunter cluster has been thinned by monsters, creating a temporary opening.
@@ -260,9 +260,9 @@ moderate reward   low reward
 ```
 
 The triangle has no dominant vertex:
-- **Brainiac dominance check:** +6 sanity is huge, but the 6-tile scream and threat-adjacent placement mean the zombie often takes 1-2 HP damage in the aftermath. If taking 2 damage, the zombie is trading HP for sanity — not clearly dominant.
+- **Brainiac dominance check:** +6 sanity is huge, but the 6-tile scream and guard-adjacent placement mean the zombie often takes 1-2 HP damage in the aftermath. If taking 2 damage, the zombie is trading HP for sanity — not clearly dominant.
 - **Standard dominance check:** +4 is reliable, but in a tight economy (18 total sanity), reliably mediocre may not be enough. Players who only eat Standards may run low.
-- **Sprinter dominance check:** +2 is never enough to justify unless the player has sanity to burn. Net return after chase costs is marginal. But it's the only option that doesn't increase threat exposure.
+- **Sprinter dominance check:** +2 is never enough to justify unless the player has sanity to burn. Net return after chase costs is marginal. But it's the only option that doesn't increase guard exposure.
 
 **Context-sensitivity test:** The optimal choice changes with game state:
 - Sanity 10, HP 4, 3 hunters nearby → eat Standard (moderate return, manageable risk)
@@ -336,14 +336,14 @@ If starting distance is 4 tiles (Sprinter's flee detection range), the zombie ne
 
 **Hunter density analysis:**
 
-With default config (8 hunters on a 50x16 map), average hunter density is ~1 hunter per 100 tiles. Within a 6-tile Manhattan radius (area of ~72 tiles), expected hunters: ~0.72. However, Brainiacs are placed near threat clusters, so nearby hunter density is higher — estimated 1.5-2.5 hunters within 6 tiles.
+With default config (8 hunters on a 50x16 map), average hunter density is ~1 hunter per 100 tiles. Within a 6-tile Manhattan radius (area of ~72 tiles), expected hunters: ~0.72. However, Brainiacs are placed near guard clusters, so nearby hunter density is higher — estimated 1.5-2.5 hunters within 6 tiles.
 
 **Expected outcome after Brainiac eat:**
 - Hunters alerted: 1.5-2.5 (vs. 0.5-1.5 for Standard at 4-tile range)
 - Alert duration: 2 turns
 - Hunter movement: 2 tiles/turn, so a hunter 6 tiles away reaches the eat site in 3 turns (1 turn after alert expires)
 - A hunter 4 tiles away reaches in 2 turns (during alert)
-- A hunter 2 tiles away reaches in 1 turn (immediate threat)
+- A hunter 2 tiles away reaches in 1 turn (immediate guard)
 
 **Survival model:**
 - If 1 hunter attacks: 50% hit rate, 1 damage. Expected HP cost: 0.5.
