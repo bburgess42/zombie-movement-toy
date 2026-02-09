@@ -53,16 +53,21 @@ Drift impulse and interval interpolate smoothly via `getSanityT()` with a t² cu
 ### Level Generator (Room-Grid, Spelunky-style)
 Procedural room-grid level generation inspired by Spelunky. Hand-designed room templates are procedurally arranged on a grid with a critical path from left to right.
 
-- **Room grid**: 24 columns × 6 rows of 8×8-tile rooms = 192×48 total tiles (6144×1536 canvas)
+- **Room grid**: 8 columns × 3 rows of 12×12-tile rooms = 96×36 total tiles (3072×1152 canvas)
 - **9 room templates**: flat_ground, gap_jump, platforms_up, climb_exit_top, drop_exit_bottom, enter_from_above, enter_from_below, vertical_shaft, dead_end
-- **Connection zones**: fixed positions at room boundaries (left/right: cols 0/7 rows 5-6; top/bottom: row 0/7 cols 3-4) ensure seamless joins between compatible rooms
-- **Critical path algorithm**: starts at (0, 2), walks RIGHT with random vertical diversions (UP/DOWN), never backtracks left, ends at col 5. Guarantees every column visited, path length 6-10 rooms.
+- **Connection zones**: fixed positions at room boundaries (left/right: cols 0-2/9-11 rows 6-10; top/bottom: row 0/11 cols 3-8) ensure seamless joins between compatible rooms
+- **Critical path algorithm**: starts at (0, 1), walks RIGHT with random vertical diversions (UP/DOWN), never backtracks left. Guarantees every column visited.
 - **Template selection**: filters by required connections (superset match), weighted by column-based difficulty (early=easy, late=hard)
 - **Non-path rooms**: adjacent to path rooms get matching connections; isolated rooms get dead_end template
-- **Entity placement**: 1 civilian per critical-path room (from template spawn points), 1-2 bonus civilians in off-path rooms, 3-4 guards from template guard spawn points
+- **Path tinting**: critical-path room tiles render slightly lighter (#456b8a vs #3a506b) for subtle visual breadcrumbing
+- **Entity placement (density + gradient + hook)**:
+  - 1 civilian in every path room (hook in first room, breadcrumbs throughout)
+  - 3-5 bonus civilians in off-path rooms (exploration reward, no guards)
+  - Guards only on path rooms with column-based difficulty gradient: cols 0-1 none (safe zone), cols 2-4 40% (rising), cols 5-6 70% (peak), col 7 100% (climax), exit room none (resolution)
+  - Target: 12-15 civilians, 5-7 guards
 - **Seeded PRNG** (splitmix32): reproducible layouts from seed
 - **BFS reachability validation**: removes platforms unreachable from ground via physics envelope
-- **Post-processing**: findAndSetSpawn() places zombie in leftmost room, findAndSetExit() places exit in rightmost room
+- **Post-processing**: findAndSetSpawn() places zombie in leftmost room, setExitInRoom() places exit in last path room
 
 Generator UI: Density (0.1-0.9), Min Sanity (1-12), Seed, Room Grid / Random buttons, Level 1, Gauntlet presets
 
@@ -239,10 +244,10 @@ Tier layout:
 | VIGNETTE_MAX_OPACITY | 0.25 | max vignette opacity at sanity 0 |
 | SPEED_LINE_THRESHOLD | 0.8 | fraction of max speed to show lines |
 | SPEED_LINE_OPACITY | 0.3 | max opacity of speed lines |
-| ROOM_W | 8 | tiles per room width |
-| ROOM_H | 8 | tiles per room height |
-| GRID_COLS | 24 | rooms across |
-| GRID_ROWS | 6 | rooms down |
+| ROOM_W | 12 | tiles per room width |
+| ROOM_H | 12 | tiles per room height |
+| GRID_COLS | 8 | rooms across |
+| GRID_ROWS | 3 | rooms down |
 | MAP_COLS | 50 (Level 1 default) | tiles (mutable) |
 | MAP_ROWS | 18 (Level 1 default) | tiles (mutable) |
 | **Sanity System** | | |

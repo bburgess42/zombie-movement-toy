@@ -502,15 +502,15 @@ const LEVEL_1 = {
 
 const ROOM_W = 12;    // tiles per room width
 const ROOM_H = 12;    // tiles per room height
-const GRID_COLS = 10; // rooms across
-const GRID_ROWS = 4;  // rooms down
+const GRID_COLS = 8;  // rooms across
+const GRID_ROWS = 3;  // rooms down
 
 const ROOM_TEMPLATES = [
     // 12x12 rooms. Connection zones (enforced post-stamp):
     //   Left:   cols 0-2, rows 6-10 empty, row 11 solid (3 wide × 5 tall)
     //   Right:  cols 9-11, rows 6-10 empty, row 11 solid (3 wide × 5 tall)
-    //   Top:    rows 0-1, cols 3-8 empty + row 2 ledges at cols 3 & 8
-    //   Bottom: rows 10-11, cols 3-8 empty
+    //   Top:    row 0 cols 3-8 empty (template row 1 provides landing platform)
+    //   Bottom: row 11 cols 3-8 empty (template row 10 already empty)
 
     // --- L+R rooms (horizontal traversal) ---
     {
@@ -613,7 +613,7 @@ const ROOM_TEMPLATES = [
         id: 'climb_exit_top',
         tiles: [
             '===......===',
-            '....====....',
+            '....===.....',
             '............',
             '..====......',
             '............',
@@ -673,7 +673,7 @@ const ROOM_TEMPLATES = [
         id: 'enter_from_below',
         tiles: [
             '===......===',
-            '....====....',
+            '....===.....',
             '............',
             '..====......',
             '............',
@@ -693,7 +693,7 @@ const ROOM_TEMPLATES = [
         id: 'vertical_shaft',
         tiles: [
             '===......===',
-            '....====....',
+            '....===.....',
             '............',
             '..==....==..',
             '............',
@@ -713,7 +713,7 @@ const ROOM_TEMPLATES = [
         id: 'corridor_top_exit',
         tiles: [
             '===......===',
-            '....====....',
+            '....===.....',
             '............',
             '..====......',
             '............',
@@ -772,7 +772,7 @@ const ROOM_TEMPLATES = [
         id: 'wide_top_entry',
         tiles: [
             '===......===',
-            '....====....',
+            '....===.....',
             '............',
             '............',
             '............',
@@ -792,7 +792,7 @@ const ROOM_TEMPLATES = [
         id: 'shaft_right_exit',
         tiles: [
             '===......===',
-            '....====....',
+            '....===.....',
             '............',
             '..====......',
             '............',
@@ -812,7 +812,7 @@ const ROOM_TEMPLATES = [
         id: 'shaft_left_exit',
         tiles: [
             '===......===',
-            '....====....',
+            '.....===....',
             '............',
             '........====',
             '............',
@@ -832,7 +832,7 @@ const ROOM_TEMPLATES = [
         id: 'crossroads',
         tiles: [
             '===......===',
-            '....====....',
+            '....===.....',
             '............',
             '..====......',
             '............',
@@ -890,7 +890,7 @@ const ROOM_TEMPLATES = [
         id: 'end_top',
         tiles: [
             '===......===',
-            '....====....',
+            '....===.....',
             '............',
             '..====......',
             '............',
@@ -1417,25 +1417,19 @@ function assembleRoomGrid(roomGrid, totalW, totalH) {
                 }
             }
 
-            // Top connection zone: rows 0-1, center 6 cols empty
-            // 2 rows tall so the vertical passage between rooms is 4 tiles total
+            // Top connection zone: row 0, center 6 cols empty
+            // Only clear row 0 — template row 1 has the landing platform
             if (template.connections.top) {
                 for (let dx = ROOM_W / 2 - 3; dx < ROOM_W / 2 + 3; dx++) {
                     grid[oy][ox + dx] = false;
-                    grid[oy + 1][ox + dx] = false;
                 }
-                // Stepping ledges at row 2 for jumping up: extend any template
-                // platform to cover the gap edges so zombie can reach the ceiling
-                grid[oy + 2][ox + ROOM_W / 2 - 3] = true;  // col 3 ledge
-                grid[oy + 2][ox + ROOM_W / 2 + 2] = true;  // col 8 ledge
             }
 
-            // Bottom connection zone: rows (H-2)..(H-1), center 6 cols empty
-            // 2 rows tall so the vertical passage between rooms is 4 tiles total
+            // Bottom connection zone: row (H-1), center 6 cols empty
+            // Only clear row 11 — template row 10 is already empty
             if (template.connections.bottom) {
                 for (let dx = ROOM_W / 2 - 3; dx < ROOM_W / 2 + 3; dx++) {
                     grid[oy + ROOM_H - 1][ox + dx] = false;
-                    grid[oy + ROOM_H - 2][ox + dx] = false;
                 }
             }
         }
@@ -1477,7 +1471,7 @@ function findRoomStandingPositions(roomCol, roomRow) {
     return positions;
 }
 
-/** Place entities on valid ground positions, spread across the path */
+/** Place entities on valid ground positions with density gradient and hook */
 function placeEntitiesFromRoomGrid(roomGrid, path, rng) {
     GameState.entities.civilians = [];
     GameState.entities.guards = [];
@@ -1492,29 +1486,21 @@ function placeEntitiesFromRoomGrid(roomGrid, path, rng) {
         if (!seen.has(key)) { seen.add(key); uniquePath.push(cell); }
     }
 
-    // Collect valid standing positions for each path room
-    const pathRoomPositions = [];
+    // --- Place 1 civilian in every path room (hook + breadcrumbs) ---
+    const civRoomMap = new Map(); // "col,row" -> civilian index
     for (const cell of uniquePath) {
         const template = roomGrid[cell.row][cell.col];
         if (template.id === 'dead_end' || template.id === 'vertical_shaft') continue;
         const positions = findRoomStandingPositions(cell.col, cell.row);
-        if (positions.length > 0) {
-            pathRoomPositions.push({ cell, positions });
-        }
-    }
-
-    // Place civilians: every 2nd path room, cap at 10
-    const civTarget = Math.min(10, Math.ceil(pathRoomPositions.length / 2));
-    const civSpacing = Math.max(1, Math.floor(pathRoomPositions.length / civTarget));
-    for (let i = 0; i < civTarget && i * civSpacing < pathRoomPositions.length; i++) {
-        const room = pathRoomPositions[i * civSpacing];
-        const pos = room.positions[Math.floor(rng() * room.positions.length)];
+        if (positions.length === 0) continue;
+        const pos = positions[Math.floor(rng() * positions.length)];
         const px = pos.col * TILE_SIZE + (TILE_SIZE - 24) / 2;
         const py = pos.row * TILE_SIZE + TILE_SIZE - 24;
+        civRoomMap.set(`${cell.col},${cell.row}`, GameState.entities.civilians.length);
         GameState.entities.civilians.push(createCivilian(px, py));
     }
 
-    // Place 1-2 bonus civilians in off-path rooms
+    // --- Place bonus civilians in off-path rooms (exploration reward) ---
     const offPathRooms = [];
     for (let r = 0; r < GRID_ROWS; r++) {
         for (let c = 0; c < GRID_COLS; c++) {
@@ -1525,11 +1511,13 @@ function placeEntitiesFromRoomGrid(roomGrid, path, rng) {
             if (positions.length > 0) offPathRooms.push({ col: c, row: r, positions });
         }
     }
+    // Shuffle off-path rooms
     for (let i = offPathRooms.length - 1; i > 0; i--) {
         const j = Math.floor(rng() * (i + 1));
         [offPathRooms[i], offPathRooms[j]] = [offPathRooms[j], offPathRooms[i]];
     }
-    for (let i = 0; i < Math.min(5, offPathRooms.length); i++) {
+    const bonusCount = Math.min(3 + Math.floor(rng() * 3), offPathRooms.length);
+    for (let i = 0; i < bonusCount; i++) {
         const room = offPathRooms[i];
         const pos = room.positions[Math.floor(rng() * room.positions.length)];
         const px = pos.col * TILE_SIZE + (TILE_SIZE - 24) / 2;
@@ -1537,20 +1525,30 @@ function placeEntitiesFromRoomGrid(roomGrid, path, rng) {
         GameState.entities.civilians.push(createCivilian(px, py));
     }
 
-    // Place guards near civilians so they can guard them.
-    // Pick civilians to guard, then find a standing position on the same ground row
-    // a few tiles away. This guarantees areSamePlatform() succeeds for assignGuards().
-    const civs = [...GameState.entities.civilians];
-    for (let i = civs.length - 1; i > 0; i--) {
-        const j = Math.floor(rng() * (i + 1));
-        [civs[i], civs[j]] = [civs[j], civs[i]];
-    }
-    const guardCount = Math.min(6, civs.length);
-    for (let i = 0; i < guardCount; i++) {
-        const civ = civs[i];
+    // --- Place guards with difficulty gradient (only on path rooms) ---
+    const lastPathRoom = uniquePath[uniquePath.length - 1];
+    for (const cell of uniquePath) {
+        // Skip exit room — resolution, no guard
+        if (cell.col === lastPathRoom.col && cell.row === lastPathRoom.row) continue;
+        const template = roomGrid[cell.row][cell.col];
+        if (template.id === 'dead_end' || template.id === 'vertical_shaft') continue;
+
+        // Difficulty gradient by column
+        let guardChance;
+        if (cell.col <= 1) guardChance = 0;           // safe learning zone
+        else if (cell.col <= 4) guardChance = 0.4;     // rising tension
+        else if (cell.col <= 6) guardChance = 0.7;     // peak challenge
+        else guardChance = 1.0;                         // climax column
+
+        if (rng() >= guardChance) continue;
+
+        // Find the civilian in this room and place guard nearby
+        const civIdx = civRoomMap.get(`${cell.col},${cell.row}`);
+        if (civIdx === undefined) continue;
+        const civ = GameState.entities.civilians[civIdx];
         const civCol = Math.floor(civ.x / TILE_SIZE);
         const civFootRow = Math.floor((civ.y + civ.height) / TILE_SIZE);
-        // Search for a standing position 2-6 tiles to either side on the same ground row
+
         let placed = false;
         const offsets = [3, -3, 4, -4, 2, -2, 5, -5, 6, -6];
         for (const off of offsets) {
@@ -1558,7 +1556,6 @@ function placeEntitiesFromRoomGrid(roomGrid, path, rng) {
             if (tx < 0 || tx >= MAP_COLS) continue;
             const standRow = civFootRow - 1;
             if (standRow < 0 || standRow >= MAP_ROWS) continue;
-            // Must be empty with solid ground below, and have headroom
             if (tileMap[standRow][tx]) continue;
             if (!tileMap[civFootRow][tx]) continue;
             if (standRow > 0 && tileMap[standRow - 1][tx]) continue;
@@ -1568,7 +1565,6 @@ function placeEntitiesFromRoomGrid(roomGrid, path, rng) {
             placed = true;
             break;
         }
-        // Fallback: spawn directly at civilian position if no offset works
         if (!placed) {
             const px = civ.x + (civ.width - 32) / 2;
             const py = civ.y + civ.height - 32;
@@ -1608,6 +1604,7 @@ function generateLevel(width, height, density, minSanity, seed) {
     // Store room grid data for entity placement
     generateLevel._lastRoomGrid = roomGrid;
     generateLevel._lastPath = path;
+    generateLevel._lastPathSet = new Set(path.map(p => `${p.col},${p.row}`));
     generateLevel._lastRng = rng;
 
     return grid;
@@ -3372,10 +3369,17 @@ function render() {
     ctx.translate(camera.shakeX, camera.shakeY);
 
     // --- Draw tiles ---
+    const pathSet = generateLevel._lastPathSet;
     for (let row = 0; row < MAP_ROWS; row++) {
         for (let col = 0; col < MAP_COLS; col++) {
             if (tileMap[row][col]) {
-                ctx.fillStyle = '#3a506b';
+                if (pathSet) {
+                    const roomCol = Math.floor(col / ROOM_W);
+                    const roomRow = Math.floor(row / ROOM_H);
+                    ctx.fillStyle = pathSet.has(`${roomCol},${roomRow}`) ? '#456b8a' : '#3a506b';
+                } else {
+                    ctx.fillStyle = '#3a506b';
+                }
                 ctx.fillRect(col * TILE_SIZE, row * TILE_SIZE, TILE_SIZE, TILE_SIZE);
                 // Subtle border for tile edges
                 ctx.strokeStyle = '#2c3e50';

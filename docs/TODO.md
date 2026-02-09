@@ -252,6 +252,16 @@
 - [ ] Task 3.5: Balance tuning pass (interactive — user plays)
 - [ ] Task 3.7: Full vertical slice playtest (interactive — user plays)
 
+## Level Design: Fun Factor Overhaul
+- [x] Shrink grid from 10×4 to 8×3 (24 rooms, denser feel)
+- [x] Path tinting — critical-path rooms render subtly lighter for visual breadcrumbing
+- [x] Entity placement rewrite — density + gradient + hook
+  - Every path room gets a civilian (hook in first room)
+  - 3-5 bonus civilians in off-path rooms (exploration reward, no guards)
+  - Guard difficulty gradient by column (safe→rising→peak→climax→resolution)
+  - Target: 12-15 civilians, 5-7 guards
+- [x] Update docs (CURRENT_STATE.md, TODO.md)
+
 ## Upcoming
 
 ## Pre-Production Documents Created
