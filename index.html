@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Zombie Movement Toy</title>
+<title>Brains for Breakfast</title>
 <style>
 /* ============================================================
    STYLES
@@ -138,6 +138,7 @@ canvas {
     position: absolute;
     top: 0; left: 0; right: 0; bottom: 0;
     display: none;
+    flex-direction: column;
     justify-content: center;
     align-items: center;
     background: rgba(0, 0, 0, 0.6);
@@ -159,6 +160,7 @@ canvas {
     position: absolute;
     top: 0; left: 0; right: 0; bottom: 0;
     display: none;
+    flex-direction: column;
     justify-content: center;
     align-items: center;
     background: rgba(0, 0, 0, 0.6);
@@ -259,6 +261,176 @@ canvas {
     color: #888;
     text-align: center;
 }
+
+/* --- Title Screen overlay --- */
+#title-overlay {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    background: #0a0a1a;
+    z-index: 30;
+    gap: 16px;
+}
+#title-overlay.hidden { display: none; }
+#title-overlay .title-text {
+    font-size: 48px;
+    font-weight: bold;
+    color: #53d769;
+    text-shadow: 0 0 20px #53d769, 0 0 40px #2a8c3a;
+    font-family: 'Consolas', monospace;
+    letter-spacing: 4px;
+    text-align: center;
+}
+#title-overlay .subtitle {
+    font-size: 16px;
+    color: #ff6b35;
+    font-family: 'Consolas', monospace;
+    letter-spacing: 2px;
+}
+#title-overlay .start-prompt {
+    font-size: 14px;
+    color: #888;
+    font-family: 'Consolas', monospace;
+    margin-top: 24px;
+    animation: blink 1.5s infinite;
+}
+@keyframes blink {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0.3; }
+}
+
+/* --- Intro text card overlay --- */
+#intro-overlay {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    display: none;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    background: #0a0a1a;
+    z-index: 30;
+    padding: 40px;
+    opacity: 0;
+    transition: opacity 0.8s ease;
+}
+#intro-overlay.active { display: flex; }
+#intro-overlay.visible { opacity: 1; }
+#intro-overlay .intro-text {
+    max-width: 600px;
+    font-size: 16px;
+    color: #cccccc;
+    font-family: 'Consolas', monospace;
+    line-height: 2.0;
+    text-align: center;
+    letter-spacing: 0.5px;
+}
+#intro-overlay .intro-continue {
+    font-size: 13px;
+    color: #666;
+    font-family: 'Consolas', monospace;
+    margin-top: 32px;
+    animation: blink 1.5s infinite;
+}
+
+/* --- Pause overlay --- */
+#pause-overlay {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    display: none;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    background: rgba(0, 0, 0, 0.75);
+    z-index: 25;
+    gap: 16px;
+}
+#pause-overlay.active { display: flex; }
+#pause-overlay .pause-title {
+    font-size: 48px;
+    font-weight: bold;
+    color: #e0e0e0;
+    font-family: 'Consolas', monospace;
+    letter-spacing: 6px;
+}
+#pause-overlay .pause-menu {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 16px;
+}
+#pause-overlay .pause-menu button {
+    background: rgba(30, 30, 60, 0.9);
+    color: #e0e0e0;
+    border: 1px solid #555;
+    padding: 10px 32px;
+    font-family: 'Consolas', monospace;
+    font-size: 14px;
+    cursor: pointer;
+    border-radius: 4px;
+    letter-spacing: 1px;
+    min-width: 200px;
+}
+#pause-overlay .pause-menu button:hover {
+    background: rgba(50, 50, 100, 0.9);
+    border-color: #53d769;
+    color: #53d769;
+}
+
+/* --- Inner monologue display --- */
+#monologue-display {
+    position: absolute;
+    bottom: 40px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.7);
+    padding: 8px 20px;
+    font-family: 'Consolas', monospace;
+    font-size: 13px;
+    font-style: italic;
+    color: #cccccc;
+    border-radius: 4px;
+    border-left: 3px solid #53d769;
+    max-width: 500px;
+    text-align: center;
+    pointer-events: none;
+    z-index: 15;
+    opacity: 0;
+    transition: opacity 0.5s ease;
+    white-space: nowrap;
+}
+#monologue-display.visible { opacity: 1; }
+
+/* --- Fade transition overlay --- */
+#fade-overlay {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: #000;
+    opacity: 0;
+    pointer-events: none;
+    z-index: 35;
+    transition: opacity 0.5s ease;
+}
+#fade-overlay.active { opacity: 1; pointer-events: all; }
+
+/* --- Mute button --- */
+#mute-btn {
+    position: absolute;
+    bottom: 8px;
+    right: 8px;
+    background: rgba(0, 0, 0, 0.5);
+    color: #888;
+    border: 1px solid #444;
+    padding: 3px 8px;
+    font-size: 11px;
+    font-family: 'Consolas', monospace;
+    cursor: pointer;
+    border-radius: 3px;
+    z-index: 15;
+}
+#mute-btn:hover { color: #e0e0e0; border-color: #666; }
 </style>
 </head>
 <body>
@@ -274,17 +446,37 @@ canvas {
     <div id="debug-panel"></div>
     <button id="tuning-toggle">Tuning</button>
     <div id="tuning-panel"></div>
-    <div id="gone-overlay"><span>MIND LOST</span></div>
-    <div id="game-over-hp-overlay"><span>GAME OVER</span></div>
+    <div id="gone-overlay"><span>MIND LOST</span><div class="restart" style="font-size:14px;color:#888;font-family:Consolas,monospace;margin-top:12px">Press R to Restart &bull; T for Title</div></div>
+    <div id="game-over-hp-overlay"><span>GAME OVER</span><div class="restart" style="font-size:14px;color:#888;font-family:Consolas,monospace;margin-top:12px">Press R to Restart &bull; T for Title</div></div>
     <div id="level-complete-overlay">
         <div class="title">LEVEL COMPLETE</div>
         <div class="stats" id="level-complete-stats"></div>
-        <div class="restart">Press R to Restart</div>
+        <div class="restart">Press R to Restart &bull; T for Title</div>
     </div>
+    <div id="title-overlay">
+        <div class="title-text">BRAINS FOR<br>BREAKFAST</div>
+        <div class="subtitle">A Zombie's Dilemma</div>
+        <div class="start-prompt">Press ENTER to Start</div>
+    </div>
+    <div id="intro-overlay">
+        <div class="intro-text" id="intro-text-content"></div>
+        <div class="intro-continue">Press ENTER to continue</div>
+    </div>
+    <div id="pause-overlay">
+        <div class="pause-title">PAUSED</div>
+        <div class="pause-menu">
+            <button id="pause-resume">Resume</button>
+            <button id="pause-restart">Restart Level</button>
+            <button id="pause-quit">Quit to Title</button>
+        </div>
+    </div>
+    <div id="monologue-display"></div>
+    <div id="fade-overlay"></div>
+    <button id="mute-btn">Sound: ON</button>
 </div>
 
 <div id="controls-hint">
-    WASD or Arrow Keys to move &bull; Space to jump &bull; R to restart &bull; Reach EXIT to win &bull; Slider to change sanity tier
+    A/D or Arrow Keys to move &bull; W/Space to jump &bull; ESC to pause &bull; M to mute
 </div>
 
 <script>
@@ -364,7 +556,9 @@ let VIGNETTE_MAX_OPACITY = 0.25;        // max vignette opacity at sanity 0
 let SPEED_LINE_THRESHOLD = 0.8;         // fraction of max speed to start showing lines
 let SPEED_LINE_OPACITY = 0.3;           // max opacity of speed lines
 // --- Sanity drain ---
-let SANITY_DRAIN_RATE = 0.15;           // sanity lost per second (continuous)
+let SANITY_DRAIN_RATE = 0.15;           // sanity lost per second (continuous) — legacy, kept for tuning panel
+let SANITY_COST_JUMP = 0.4;             // sanity lost per jump
+let SANITY_COST_DAMAGE = 1.0;           // sanity lost when taking damage
 
 // --- Health system ---
 let ZOMBIE_MAX_HP = 5;                  // max hit points
@@ -391,6 +585,1062 @@ let GUARD_PATROL_RANGE = 128;         // px — default patrol (no civilian)
 let GUARD_WATCH_RANGE = 64;           // px — patrol radius around guarded civilian
 let GUARD_LEASH_DISTANCE = 160;       // px — max chase distance from guarded civilian
 let POUNCE_SANITY_THRESHOLD = 4;       // sanity below which pounce is active (Feral boundary)
+
+// ============================================================
+// PIXEL ART SPRITE SYSTEM
+// All sprites drawn via canvas draw calls. Each sprite is a
+// function that draws onto a given context at a given position.
+// Sprites use an offscreen canvas for pre-rendering.
+// ============================================================
+
+/** Create an offscreen canvas and draw pixel art onto it */
+function createSpriteCanvas(width, height, drawFn) {
+    const c = document.createElement('canvas');
+    c.width = width;
+    c.height = height;
+    const cx = c.getContext('2d');
+    cx.imageSmoothingEnabled = false;
+    drawFn(cx, width, height);
+    return c;
+}
+
+/** Draw a single pixel (scaled to sprite coordinates) */
+function px(cx, x, y, color, scale) {
+    cx.fillStyle = color;
+    cx.fillRect(x * (scale || 1), y * (scale || 1), scale || 1, scale || 1);
+}
+
+// --- ENVIRONMENT TILESET ---
+// 8 tile variants for "decaying city" feel. Each is 32x32.
+
+const TILE_SPRITES = {};
+
+function buildTileSprites() {
+    const S = 32; // tile size
+
+    // Ground/floor tile — cracked concrete
+    TILE_SPRITES.ground = createSpriteCanvas(S, S, (cx) => {
+        cx.fillStyle = '#3a506b';
+        cx.fillRect(0, 0, S, S);
+        // Brick pattern
+        cx.fillStyle = '#2c3e50';
+        cx.fillRect(0, 0, S, 1); // top line
+        cx.fillRect(0, 15, S, 1); // middle line
+        cx.fillRect(15, 0, 1, 15); // vertical brick joint top
+        cx.fillRect(0, 15, 1, 17); // vertical brick joint bottom
+        cx.fillRect(S-1, 15, 1, 17);
+        // Highlight edge
+        cx.fillStyle = '#4a6b8a';
+        cx.fillRect(1, 1, S-2, 1);
+        // Dark bottom edge
+        cx.fillStyle = '#1a2a3e';
+        cx.fillRect(0, S-1, S, 1);
+        // Cracks
+        cx.fillStyle = '#2c3e50';
+        cx.fillRect(8, 4, 1, 3);
+        cx.fillRect(22, 18, 1, 4);
+        cx.fillRect(5, 22, 2, 1);
+    });
+
+    // Wall tile — darker brick with moss
+    TILE_SPRITES.wall = createSpriteCanvas(S, S, (cx) => {
+        cx.fillStyle = '#2c3e50';
+        cx.fillRect(0, 0, S, S);
+        // Brick pattern
+        cx.fillStyle = '#1a2a3e';
+        cx.fillRect(0, 7, S, 1);
+        cx.fillRect(0, 15, S, 1);
+        cx.fillRect(0, 23, S, 1);
+        cx.fillRect(15, 0, 1, 7);
+        cx.fillRect(7, 8, 1, 7);
+        cx.fillRect(23, 8, 1, 7);
+        cx.fillRect(15, 16, 1, 7);
+        cx.fillRect(7, 24, 1, 8);
+        // Moss/grime patches
+        cx.fillStyle = '#2a4a2a';
+        cx.fillRect(2, 2, 2, 1);
+        cx.fillRect(20, 10, 1, 2);
+        cx.fillRect(10, 26, 2, 1);
+        // Highlight
+        cx.fillStyle = '#3a506b';
+        cx.fillRect(1, 1, 3, 1);
+        cx.fillRect(17, 9, 2, 1);
+    });
+
+    // Platform tile — metal grating
+    TILE_SPRITES.platform = createSpriteCanvas(S, S, (cx) => {
+        cx.fillStyle = '#4a5a6a';
+        cx.fillRect(0, 0, S, S);
+        // Grating lines
+        cx.fillStyle = '#3a4a5a';
+        for (let i = 0; i < S; i += 4) {
+            cx.fillRect(i, 0, 1, S);
+            cx.fillRect(0, i, S, 1);
+        }
+        // Edge highlight
+        cx.fillStyle = '#6a7a8a';
+        cx.fillRect(0, 0, S, 2);
+        // Rivets
+        cx.fillStyle = '#7a8a9a';
+        cx.fillRect(2, 4, 2, 2);
+        cx.fillRect(S-4, 4, 2, 2);
+        cx.fillRect(2, S-6, 2, 2);
+        cx.fillRect(S-4, S-6, 2, 2);
+        // Dark bottom
+        cx.fillStyle = '#2a3a4a';
+        cx.fillRect(0, S-2, S, 2);
+    });
+
+    // Surface tile — top of ground (grass/dirt edge)
+    TILE_SPRITES.surface = createSpriteCanvas(S, S, (cx) => {
+        // Fill with ground
+        cx.fillStyle = '#3a506b';
+        cx.fillRect(0, 0, S, S);
+        // Brick pattern
+        cx.fillStyle = '#2c3e50';
+        cx.fillRect(0, 8, S, 1);
+        cx.fillRect(0, 16, S, 1);
+        cx.fillRect(0, 24, S, 1);
+        cx.fillRect(15, 0, 1, 8);
+        cx.fillRect(7, 9, 1, 7);
+        // Top edge — cracked concrete lip
+        cx.fillStyle = '#5a7a9a';
+        cx.fillRect(0, 0, S, 2);
+        cx.fillStyle = '#4a6a8a';
+        cx.fillRect(0, 2, S, 1);
+        // Dirt patches on surface
+        cx.fillStyle = '#4a3a2a';
+        cx.fillRect(3, 0, 4, 1);
+        cx.fillRect(20, 0, 3, 1);
+        cx.fillRect(12, 1, 2, 1);
+    });
+}
+
+/** Get the appropriate tile sprite based on context (surface detection) */
+function getTileSprite(col, row) {
+    // Surface tile: solid with air above
+    const aboveEmpty = row === 0 || !tileMap[row - 1][col];
+    if (aboveEmpty) return TILE_SPRITES.surface;
+
+    // Wall tile: has solid on both sides
+    const leftSolid = col > 0 && tileMap[row][col - 1];
+    const rightSolid = col < MAP_COLS - 1 && tileMap[row][col + 1];
+    if (leftSolid && rightSolid) return TILE_SPRITES.wall;
+
+    // Platform or standard ground
+    return TILE_SPRITES.ground;
+}
+
+// --- ZOMBIE SPRITE ---
+// 32x48 zombie with 2 visual states (Lucid/Feral) and walk animation.
+
+const ZOMBIE_SPRITES = { lucid: [], feral: [], slipping: [] };
+
+function buildZombieSprites() {
+    const W = 32, H = 48;
+    const scale = 2; // 16x24 pixel art scaled 2x
+
+    // Frame 0: Standing, Frame 1: Walk left foot, Frame 2: Walk right foot
+    for (let frame = 0; frame < 3; frame++) {
+        // LUCID — upright gentleman
+        ZOMBIE_SPRITES.lucid[frame] = createSpriteCanvas(W, H, (cx) => {
+            // Head (6x6 pixels at scale 2 = 12x12)
+            cx.fillStyle = '#7a9a6a'; // green-gray skin
+            cx.fillRect(5*scale, 0*scale, 6*scale, 6*scale);
+            // Eyes
+            cx.fillStyle = '#fff';
+            cx.fillRect(6*scale, 2*scale, 1*scale, 1*scale);
+            cx.fillRect(9*scale, 2*scale, 1*scale, 1*scale);
+            cx.fillStyle = '#222';
+            cx.fillRect(6*scale, 2*scale, 1*scale, 1*scale); // pupil
+            cx.fillRect(9*scale, 2*scale, 1*scale, 1*scale);
+            // Top hat
+            cx.fillStyle = '#1a1a2e';
+            cx.fillRect(5*scale, -1*scale, 6*scale, 1*scale); // brim (clipped)
+            cx.fillRect(6*scale, 0, 4*scale, 1*scale); // only show base of hat
+            // Mouth (thin line)
+            cx.fillStyle = '#4a6a4a';
+            cx.fillRect(7*scale, 4*scale, 2*scale, 1*scale);
+            // Body/torso — suit jacket
+            cx.fillStyle = '#2a2a3e';
+            cx.fillRect(5*scale, 6*scale, 6*scale, 8*scale);
+            // Lapels
+            cx.fillStyle = '#3a3a5e';
+            cx.fillRect(5*scale, 6*scale, 1*scale, 4*scale);
+            cx.fillRect(10*scale, 6*scale, 1*scale, 4*scale);
+            // Shirt/tie
+            cx.fillStyle = '#8a3a3a';
+            cx.fillRect(7*scale, 6*scale, 2*scale, 5*scale);
+            // Arms
+            cx.fillStyle = '#2a2a3e';
+            const armOffset = frame === 1 ? 1 : (frame === 2 ? -1 : 0);
+            cx.fillRect(3*scale, (7+armOffset)*scale, 2*scale, 6*scale); // left arm
+            cx.fillRect(11*scale, (7-armOffset)*scale, 2*scale, 6*scale); // right arm
+            // Hands
+            cx.fillStyle = '#7a9a6a';
+            cx.fillRect(3*scale, (13+armOffset)*scale, 2*scale, 1*scale);
+            cx.fillRect(11*scale, (13-armOffset)*scale, 2*scale, 1*scale);
+            // Legs
+            cx.fillStyle = '#1a1a2e';
+            const legSpread = frame === 0 ? 0 : (frame === 1 ? 1 : -1);
+            cx.fillRect((6+legSpread)*scale, 14*scale, 2*scale, 8*scale); // left leg
+            cx.fillRect((8-legSpread)*scale, 14*scale, 2*scale, 8*scale); // right leg
+            // Shoes
+            cx.fillStyle = '#333';
+            cx.fillRect((5+legSpread)*scale, 22*scale, 3*scale, 2*scale);
+            cx.fillRect((8-legSpread)*scale, 22*scale, 3*scale, 2*scale);
+        });
+
+        // FERAL — hunched, wild
+        ZOMBIE_SPRITES.feral[frame] = createSpriteCanvas(W, H, (cx) => {
+            // Head — leaned forward, mouth open
+            cx.fillStyle = '#5a7a4a'; // darker green skin
+            cx.fillRect(3*scale, 2*scale, 6*scale, 6*scale);
+            // Wild eyes — red pupils
+            cx.fillStyle = '#ff3333';
+            cx.fillRect(4*scale, 4*scale, 2*scale, 1*scale);
+            cx.fillRect(7*scale, 4*scale, 2*scale, 1*scale);
+            // Open mouth — teeth
+            cx.fillStyle = '#2a2a2a';
+            cx.fillRect(4*scale, 6*scale, 4*scale, 2*scale);
+            cx.fillStyle = '#ddd';
+            cx.fillRect(4*scale, 6*scale, 1*scale, 1*scale); // teeth
+            cx.fillRect(7*scale, 6*scale, 1*scale, 1*scale);
+            cx.fillRect(5*scale, 7*scale, 1*scale, 1*scale);
+            cx.fillRect(6*scale, 7*scale, 1*scale, 1*scale);
+            // Torn hat remnant
+            cx.fillStyle = '#1a1a2e';
+            cx.fillRect(3*scale, 1*scale, 4*scale, 1*scale);
+            // Hunched body — wider, lower
+            cx.fillStyle = '#1a1a2e'; // torn suit
+            cx.fillRect(3*scale, 8*scale, 8*scale, 7*scale);
+            // Rips in jacket
+            cx.fillStyle = '#5a7a4a';
+            cx.fillRect(5*scale, 10*scale, 1*scale, 2*scale);
+            cx.fillRect(8*scale, 9*scale, 1*scale, 1*scale);
+            // Blood stains
+            cx.fillStyle = '#8a2a2a';
+            cx.fillRect(4*scale, 11*scale, 2*scale, 1*scale);
+            cx.fillRect(9*scale, 12*scale, 1*scale, 2*scale);
+            // Claw arms — forward reaching
+            cx.fillStyle = '#5a7a4a';
+            const clawF = frame === 1 ? -1 : (frame === 2 ? 1 : 0);
+            cx.fillRect((1+clawF)*scale, 8*scale, 2*scale, 7*scale);
+            cx.fillRect((11-clawF)*scale, 8*scale, 2*scale, 7*scale);
+            // Claws
+            cx.fillStyle = '#333';
+            cx.fillRect((1+clawF)*scale, 15*scale, 1*scale, 1*scale);
+            cx.fillRect((12-clawF)*scale, 15*scale, 1*scale, 1*scale);
+            // Legs — hunched stance
+            cx.fillStyle = '#1a1a2e';
+            const legF = frame === 0 ? 0 : (frame === 1 ? 2 : -2);
+            cx.fillRect((4+legF)*scale, 15*scale, 3*scale, 7*scale);
+            cx.fillRect((7-legF)*scale, 15*scale, 3*scale, 7*scale);
+            // Bare feet
+            cx.fillStyle = '#5a7a4a';
+            cx.fillRect((3+legF)*scale, 22*scale, 4*scale, 2*scale);
+            cx.fillRect((7-legF)*scale, 22*scale, 4*scale, 2*scale);
+        });
+
+        // SLIPPING — between lucid and feral
+        ZOMBIE_SPRITES.slipping[frame] = createSpriteCanvas(W, H, (cx) => {
+            // Head — slightly forward
+            cx.fillStyle = '#6a8a5a';
+            cx.fillRect(4*scale, 1*scale, 6*scale, 6*scale);
+            // Eyes — yellow-ish
+            cx.fillStyle = '#ffcc00';
+            cx.fillRect(5*scale, 3*scale, 1*scale, 1*scale);
+            cx.fillRect(8*scale, 3*scale, 1*scale, 1*scale);
+            // Grimace
+            cx.fillStyle = '#4a6a4a';
+            cx.fillRect(6*scale, 5*scale, 2*scale, 1*scale);
+            // Crooked hat
+            cx.fillStyle = '#1a1a2e';
+            cx.fillRect(4*scale, 0*scale, 5*scale, 1*scale);
+            cx.fillRect(5*scale, 0, 3*scale, 1*scale);
+            // Body — slightly hunched
+            cx.fillStyle = '#222238';
+            cx.fillRect(4*scale, 7*scale, 7*scale, 7*scale);
+            // Loosened tie
+            cx.fillStyle = '#8a3a3a';
+            cx.fillRect(7*scale, 7*scale, 1*scale, 4*scale);
+            cx.fillRect(6*scale, 11*scale, 1*scale, 1*scale);
+            // Arms — slightly forward
+            cx.fillStyle = '#222238';
+            const aOff = frame === 1 ? 1 : (frame === 2 ? -1 : 0);
+            cx.fillRect((2+aOff)*scale, (7)*scale, 2*scale, 7*scale);
+            cx.fillRect((11-aOff)*scale, (7)*scale, 2*scale, 7*scale);
+            cx.fillStyle = '#6a8a5a';
+            cx.fillRect((2+aOff)*scale, 14*scale, 2*scale, 1*scale);
+            cx.fillRect((11-aOff)*scale, 14*scale, 2*scale, 1*scale);
+            // Legs
+            cx.fillStyle = '#1a1a2e';
+            const lOff = frame === 0 ? 0 : (frame === 1 ? 1 : -1);
+            cx.fillRect((5+lOff)*scale, 14*scale, 2*scale, 8*scale);
+            cx.fillRect((8-lOff)*scale, 14*scale, 2*scale, 8*scale);
+            cx.fillStyle = '#333';
+            cx.fillRect((4+lOff)*scale, 22*scale, 3*scale, 2*scale);
+            cx.fillRect((8-lOff)*scale, 22*scale, 3*scale, 2*scale);
+        });
+    }
+}
+
+// --- CIVILIAN SPRITE ---
+// 24x24 civilian NPC
+
+const CIVILIAN_SPRITES = { idle: null, flee: null };
+
+function buildCivilianSprites() {
+    const W = 24, H = 24;
+    const s = 2;
+
+    // Idle civilian — standing person
+    CIVILIAN_SPRITES.idle = createSpriteCanvas(W, H, (cx) => {
+        // Head
+        cx.fillStyle = '#ddb88c';
+        cx.fillRect(4*s, 0*s, 4*s, 4*s);
+        // Hair
+        cx.fillStyle = '#5a3a1a';
+        cx.fillRect(4*s, 0, 4*s, 1*s);
+        // Eyes
+        cx.fillStyle = '#333';
+        cx.fillRect(5*s, 1*s, 1*s, 1*s);
+        cx.fillRect(7*s, 1*s, 1*s, 1*s);
+        // Body — blue shirt
+        cx.fillStyle = '#4466aa';
+        cx.fillRect(4*s, 4*s, 4*s, 4*s);
+        // Legs — khaki
+        cx.fillStyle = '#8a7a5a';
+        cx.fillRect(4*s, 8*s, 2*s, 3*s);
+        cx.fillRect(6*s, 8*s, 2*s, 3*s);
+        // Shoes
+        cx.fillStyle = '#3a2a1a';
+        cx.fillRect(3*s, 11*s, 3*s, 1*s);
+        cx.fillRect(6*s, 11*s, 3*s, 1*s);
+    });
+
+    // Fleeing civilian — arms up, running
+    CIVILIAN_SPRITES.flee = createSpriteCanvas(W, H, (cx) => {
+        // Head
+        cx.fillStyle = '#ddb88c';
+        cx.fillRect(4*s, 0*s, 4*s, 4*s);
+        // Hair — messy
+        cx.fillStyle = '#5a3a1a';
+        cx.fillRect(3*s, 0, 5*s, 1*s);
+        // Eyes — wide open
+        cx.fillStyle = '#fff';
+        cx.fillRect(5*s, 1*s, 1*s, 2*s);
+        cx.fillRect(7*s, 1*s, 1*s, 2*s);
+        cx.fillStyle = '#333';
+        cx.fillRect(5*s, 2*s, 1*s, 1*s);
+        cx.fillRect(7*s, 2*s, 1*s, 1*s);
+        // Open mouth
+        cx.fillStyle = '#8a3a3a';
+        cx.fillRect(5*s, 3*s, 2*s, 1*s);
+        // Body
+        cx.fillStyle = '#4466aa';
+        cx.fillRect(4*s, 4*s, 4*s, 4*s);
+        // Arms raised
+        cx.fillStyle = '#ddb88c';
+        cx.fillRect(2*s, 2*s, 2*s, 4*s);
+        cx.fillRect(8*s, 2*s, 2*s, 4*s);
+        // Legs — running
+        cx.fillStyle = '#8a7a5a';
+        cx.fillRect(3*s, 8*s, 2*s, 3*s);
+        cx.fillRect(7*s, 8*s, 2*s, 3*s);
+        // Shoes
+        cx.fillStyle = '#3a2a1a';
+        cx.fillRect(2*s, 11*s, 3*s, 1*s);
+        cx.fillRect(7*s, 11*s, 3*s, 1*s);
+    });
+}
+
+// --- GUARD SPRITE ---
+// 32x32 guard
+
+const GUARD_SPRITES = { patrol: null, chase: null, alert: null };
+
+function buildGuardSprites() {
+    const W = 32, H = 32;
+    const s = 2;
+
+    // Patrol guard — armored, stern
+    GUARD_SPRITES.patrol = createSpriteCanvas(W, H, (cx) => {
+        // Helmet
+        cx.fillStyle = '#4a4a5a';
+        cx.fillRect(4*s, 0*s, 8*s, 3*s);
+        cx.fillStyle = '#3a3a4a';
+        cx.fillRect(5*s, 0, 6*s, 1*s);
+        // Visor
+        cx.fillStyle = '#1a1a2a';
+        cx.fillRect(5*s, 2*s, 6*s, 1*s);
+        // Face
+        cx.fillStyle = '#cca888';
+        cx.fillRect(5*s, 3*s, 6*s, 3*s);
+        // Eyes — stern
+        cx.fillStyle = '#333';
+        cx.fillRect(6*s, 4*s, 1*s, 1*s);
+        cx.fillRect(9*s, 4*s, 1*s, 1*s);
+        // Body — armor vest
+        cx.fillStyle = '#2a2a4a';
+        cx.fillRect(4*s, 6*s, 8*s, 5*s);
+        // Badge
+        cx.fillStyle = '#ccaa33';
+        cx.fillRect(6*s, 7*s, 1*s, 1*s);
+        // Belt
+        cx.fillStyle = '#1a1a1a';
+        cx.fillRect(4*s, 10*s, 8*s, 1*s);
+        cx.fillStyle = '#ccaa33';
+        cx.fillRect(7*s, 10*s, 2*s, 1*s); // buckle
+        // Arms — baton
+        cx.fillStyle = '#2a2a4a';
+        cx.fillRect(2*s, 6*s, 2*s, 6*s);
+        cx.fillRect(12*s, 6*s, 2*s, 6*s);
+        // Baton in right hand
+        cx.fillStyle = '#333';
+        cx.fillRect(13*s, 5*s, 1*s, 4*s);
+        // Legs
+        cx.fillStyle = '#1a1a3a';
+        cx.fillRect(5*s, 11*s, 2*s, 4*s);
+        cx.fillRect(9*s, 11*s, 2*s, 4*s);
+        // Boots
+        cx.fillStyle = '#1a1a1a';
+        cx.fillRect(4*s, 15*s, 3*s, 1*s);
+        cx.fillRect(9*s, 15*s, 3*s, 1*s);
+    });
+
+    // Chase guard — aggressive pose
+    GUARD_SPRITES.chase = createSpriteCanvas(W, H, (cx) => {
+        // Helmet
+        cx.fillStyle = '#5a3a3a';
+        cx.fillRect(4*s, 0*s, 8*s, 3*s);
+        // Visor — red tint
+        cx.fillStyle = '#4a1a1a';
+        cx.fillRect(5*s, 2*s, 6*s, 1*s);
+        // Face — angry
+        cx.fillStyle = '#cca888';
+        cx.fillRect(5*s, 3*s, 6*s, 3*s);
+        cx.fillStyle = '#ff3333';
+        cx.fillRect(6*s, 4*s, 2*s, 1*s);
+        cx.fillRect(8*s, 4*s, 2*s, 1*s);
+        // Snarl
+        cx.fillStyle = '#5a2a2a';
+        cx.fillRect(6*s, 5*s, 4*s, 1*s);
+        // Body — same but tinted
+        cx.fillStyle = '#3a2a2a';
+        cx.fillRect(4*s, 6*s, 8*s, 5*s);
+        cx.fillStyle = '#ccaa33';
+        cx.fillRect(6*s, 7*s, 1*s, 1*s);
+        cx.fillStyle = '#1a1a1a';
+        cx.fillRect(4*s, 10*s, 8*s, 1*s);
+        // Arms forward — baton raised
+        cx.fillStyle = '#3a2a2a';
+        cx.fillRect(1*s, 5*s, 3*s, 5*s);
+        cx.fillRect(12*s, 4*s, 3*s, 5*s);
+        cx.fillStyle = '#333';
+        cx.fillRect(13*s, 2*s, 1*s, 5*s); // baton raised
+        // Legs — running
+        cx.fillStyle = '#2a1a1a';
+        cx.fillRect(4*s, 11*s, 2*s, 4*s);
+        cx.fillRect(10*s, 11*s, 2*s, 4*s);
+        cx.fillStyle = '#1a1a1a';
+        cx.fillRect(3*s, 15*s, 3*s, 1*s);
+        cx.fillRect(10*s, 15*s, 3*s, 1*s);
+    });
+
+    // Alert guard — yellow tint, looking around
+    GUARD_SPRITES.alert = createSpriteCanvas(W, H, (cx) => {
+        // Helmet
+        cx.fillStyle = '#6a6a3a';
+        cx.fillRect(4*s, 0*s, 8*s, 3*s);
+        cx.fillStyle = '#4a4a2a';
+        cx.fillRect(5*s, 2*s, 6*s, 1*s);
+        // Face — alarmed
+        cx.fillStyle = '#cca888';
+        cx.fillRect(5*s, 3*s, 6*s, 3*s);
+        cx.fillStyle = '#333';
+        cx.fillRect(6*s, 3*s, 2*s, 2*s);
+        cx.fillRect(8*s, 3*s, 2*s, 2*s);
+        // O mouth
+        cx.fillStyle = '#5a3a3a';
+        cx.fillRect(7*s, 5*s, 2*s, 1*s);
+        // Body
+        cx.fillStyle = '#2a2a4a';
+        cx.fillRect(4*s, 6*s, 8*s, 5*s);
+        cx.fillStyle = '#ccaa33';
+        cx.fillRect(6*s, 7*s, 1*s, 1*s);
+        cx.fillStyle = '#1a1a1a';
+        cx.fillRect(4*s, 10*s, 8*s, 1*s);
+        // Arms out searching
+        cx.fillStyle = '#2a2a4a';
+        cx.fillRect(1*s, 6*s, 3*s, 4*s);
+        cx.fillRect(12*s, 6*s, 3*s, 4*s);
+        // Legs
+        cx.fillStyle = '#1a1a3a';
+        cx.fillRect(5*s, 11*s, 2*s, 4*s);
+        cx.fillRect(9*s, 11*s, 2*s, 4*s);
+        cx.fillStyle = '#1a1a1a';
+        cx.fillRect(4*s, 15*s, 3*s, 1*s);
+        cx.fillRect(9*s, 15*s, 3*s, 1*s);
+    });
+}
+
+// --- BACKGROUND LAYER ---
+// City skyline drawn behind tiles.
+
+let bgCanvas = null;
+
+function buildBackground(canvasWidth, canvasHeight) {
+    bgCanvas = createSpriteCanvas(canvasWidth, canvasHeight, (cx, w, h) => {
+        // Night sky gradient
+        const grad = cx.createLinearGradient(0, 0, 0, h);
+        grad.addColorStop(0, '#0a0a1a');
+        grad.addColorStop(0.4, '#0f1428');
+        grad.addColorStop(1, '#16213e');
+        cx.fillStyle = grad;
+        cx.fillRect(0, 0, w, h);
+
+        // Stars
+        cx.fillStyle = '#ffffff';
+        const starSeed = 12345;
+        let rng = splitmix32(starSeed);
+        for (let i = 0; i < 40; i++) {
+            const sx = rng() * w;
+            const sy = rng() * h * 0.5;
+            const size = rng() < 0.3 ? 2 : 1;
+            cx.globalAlpha = 0.3 + rng() * 0.5;
+            cx.fillRect(sx, sy, size, size);
+        }
+        cx.globalAlpha = 1.0;
+
+        // Distant buildings (silhouettes)
+        cx.fillStyle = '#0d1220';
+        const buildings = [
+            { x: 0.02, w: 0.06, h: 0.35 },
+            { x: 0.1, w: 0.04, h: 0.5 },
+            { x: 0.15, w: 0.08, h: 0.3 },
+            { x: 0.25, w: 0.05, h: 0.6 },
+            { x: 0.32, w: 0.07, h: 0.4 },
+            { x: 0.42, w: 0.03, h: 0.55 },
+            { x: 0.47, w: 0.08, h: 0.25 },
+            { x: 0.58, w: 0.06, h: 0.45 },
+            { x: 0.66, w: 0.04, h: 0.65 },
+            { x: 0.72, w: 0.07, h: 0.35 },
+            { x: 0.82, w: 0.05, h: 0.5 },
+            { x: 0.9, w: 0.06, h: 0.3 },
+        ];
+        for (const b of buildings) {
+            const bx = b.x * w;
+            const bw = b.w * w;
+            const bh = b.h * h;
+            cx.fillRect(bx, h - bh, bw, bh);
+            // Windows — faint yellow dots
+            cx.fillStyle = '#2a2a1a';
+            for (let wy = h - bh + 8; wy < h - 4; wy += 12) {
+                for (let wx = bx + 4; wx < bx + bw - 4; wx += 8) {
+                    if (rng() < 0.4) {
+                        cx.fillRect(wx, wy, 3, 3);
+                    }
+                }
+            }
+            cx.fillStyle = '#0d1220';
+        }
+    });
+}
+
+// --- ENVIRONMENTAL SIGNS ---
+// Readable signs placed in the level.
+
+const ENV_SIGNS = [
+    { col: 0, row: 0, text: '"QUARANTINE ZONE - DO NOT ENTER"' },
+    { col: 0, row: 0, text: '"Day 47. No rescue. No hope."' },
+    { col: 0, row: 0, text: '"THEY WALK AMONG US"' },
+];
+
+function buildSignSprite(text) {
+    const charW = 7;
+    const w = Math.max(64, text.length * charW + 16);
+    const h = 24;
+    return createSpriteCanvas(w, h, (cx) => {
+        // Wooden sign background
+        cx.fillStyle = '#5a4a3a';
+        cx.fillRect(0, 0, w, h);
+        cx.strokeStyle = '#3a2a1a';
+        cx.lineWidth = 1;
+        cx.strokeRect(0, 0, w, h);
+        // Text
+        cx.fillStyle = '#ddd';
+        cx.font = '9px Consolas, monospace';
+        cx.textAlign = 'center';
+        cx.textBaseline = 'middle';
+        cx.fillText(text, w/2, h/2);
+    });
+}
+
+// ============================================================
+// AUDIO SYSTEM
+// Web Audio API: procedural SFX + music. All embedded inline.
+// ============================================================
+
+let audioCtx = null;
+let audioMuted = false;
+let masterGain = null;
+let musicGain = null;
+let sfxGain = null;
+
+function initAudio() {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    masterGain = audioCtx.createGain();
+    masterGain.gain.value = 1.0;
+    masterGain.connect(audioCtx.destination);
+
+    sfxGain = audioCtx.createGain();
+    sfxGain.gain.value = 0.5;
+    sfxGain.connect(masterGain);
+
+    musicGain = audioCtx.createGain();
+    musicGain.gain.value = 0.4;
+    musicGain.connect(masterGain);
+}
+
+function ensureAudio() {
+    if (!audioCtx) initAudio();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+}
+
+function toggleMute() {
+    audioMuted = !audioMuted;
+    if (masterGain) masterGain.gain.value = audioMuted ? 0 : 1;
+    document.getElementById('mute-btn').textContent = audioMuted ? 'Sound: OFF' : 'Sound: ON';
+}
+
+// --- Procedural SFX generators ---
+
+function playNote(freq, duration, type, volume, dest) {
+    if (!audioCtx || audioMuted) return;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = type || 'square';
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime((volume || 0.3), audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+    osc.connect(gain);
+    gain.connect(dest || sfxGain);
+    osc.start();
+    osc.stop(audioCtx.currentTime + duration);
+}
+
+function playNoise(duration, volume, dest) {
+    if (!audioCtx || audioMuted) return;
+    const bufferSize = audioCtx.sampleRate * duration;
+    const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+        data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
+    }
+    const source = audioCtx.createBufferSource();
+    source.buffer = buffer;
+    const gain = audioCtx.createGain();
+    gain.gain.value = volume || 0.2;
+    source.connect(gain);
+    gain.connect(dest || sfxGain);
+    source.start();
+}
+
+function sfxJump() {
+    ensureAudio();
+    playNote(220, 0.08, 'square', 0.15);
+    playNote(330, 0.06, 'square', 0.1);
+    setTimeout(() => playNote(440, 0.05, 'square', 0.08), 30);
+}
+
+function sfxLand() {
+    ensureAudio();
+    playNoise(0.06, 0.12);
+    playNote(80, 0.08, 'triangle', 0.1);
+}
+
+function sfxEat() {
+    ensureAudio();
+    // Crunchy eat sound
+    playNoise(0.1, 0.15);
+    playNote(150, 0.1, 'sawtooth', 0.1);
+    setTimeout(() => {
+        playNote(200, 0.08, 'square', 0.08);
+        playNoise(0.06, 0.1);
+    }, 80);
+    setTimeout(() => playNote(300, 0.12, 'sine', 0.06), 150);
+}
+
+function sfxScream() {
+    ensureAudio();
+    // Civilian death scream — descending wail
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(200, audioCtx.currentTime + 0.4);
+    gain.gain.setValueAtTime(0.12, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.4);
+    osc.connect(gain);
+    gain.connect(sfxGain);
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.4);
+}
+
+function sfxDamage() {
+    ensureAudio();
+    playNoise(0.12, 0.2);
+    playNote(100, 0.15, 'sawtooth', 0.15);
+    playNote(60, 0.2, 'square', 0.1);
+}
+
+function sfxGuardAlert() {
+    ensureAudio();
+    playNote(400, 0.08, 'square', 0.12);
+    setTimeout(() => playNote(500, 0.08, 'square', 0.1), 100);
+    setTimeout(() => playNote(600, 0.1, 'square', 0.08), 200);
+}
+
+function sfxDie() {
+    ensureAudio();
+    // Death — low descending buzz
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(200, audioCtx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(40, audioCtx.currentTime + 0.8);
+    gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.8);
+    osc.connect(gain);
+    gain.connect(sfxGain);
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.8);
+    playNoise(0.5, 0.15);
+}
+
+function sfxLevelComplete() {
+    ensureAudio();
+    // Victory fanfare — ascending notes
+    const notes = [330, 392, 494, 587, 659];
+    notes.forEach((freq, i) => {
+        setTimeout(() => playNote(freq, 0.3, 'square', 0.1), i * 100);
+    });
+}
+
+// --- Music system (sequenced ambient + tense arpeggios) ---
+// Instead of constant droning oscillators, plays slow note sequences
+// with rests. Calm = sparse minor arpeggios. Tense = faster chromatic
+// patterns. Crossfaded by sanity.
+
+let musicPlaying = false;
+let musicIntervalId = null;
+let musicBeat = 0;
+
+// Calm sequence — Am pentatonic, slow with rests. Each entry is [freq, duration] or null for rest.
+const CALM_SEQ = [
+    [110, 0.8], null, [165, 0.6], null, null,
+    [131, 0.8], null, [196, 0.5], null, null, null,
+    [110, 0.6], null, [147, 0.7], null,
+    [165, 0.9], null, null, null, null, null,
+];
+
+// Tense sequence — chromatic, faster, dissonant
+const TENSE_SEQ = [
+    [73, 0.3], [78, 0.2], null, [69, 0.3], null,
+    [82, 0.2], [73, 0.3], null, null,
+    [62, 0.4], null, [78, 0.2], [82, 0.2], null,
+    [69, 0.3], null, null, [87, 0.2], null, null,
+];
+
+function playMusicNote(freq, duration, volume) {
+    if (!audioCtx || audioMuted) return;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    const filter = audioCtx.createBiquadFilter();
+
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+
+    filter.type = 'lowpass';
+    filter.frequency.value = 600;
+
+    // Gentle envelope: fade in, sustain, fade out
+    const now = audioCtx.currentTime;
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(volume, now + 0.05);
+    gain.gain.setValueAtTime(volume, now + duration * 0.6);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(musicGain);
+    osc.start(now);
+    osc.stop(now + duration + 0.05);
+}
+
+function startMusic() {
+    if (musicPlaying || !audioCtx) return;
+    musicPlaying = true;
+    musicBeat = 0;
+
+    // Tick every 400ms — one step in the sequence
+    musicIntervalId = setInterval(() => {
+        if (!musicPlaying || audioMuted) return;
+        const t = typeof getSanityT === 'function' ? getSanityT() : 0;
+
+        // Calm layer (louder at high sanity)
+        const calmVol = Math.max(0, (1 - t * 0.9)) * 0.06;
+        const calmNote = CALM_SEQ[musicBeat % CALM_SEQ.length];
+        if (calmNote && calmVol > 0.005) {
+            playMusicNote(calmNote[0], calmNote[1], calmVol);
+            // Add soft octave above for richness
+            playMusicNote(calmNote[0] * 2, calmNote[1] * 0.8, calmVol * 0.3);
+        }
+
+        // Tense layer (louder at low sanity)
+        const tenseVol = t * 0.05;
+        const tenseNote = TENSE_SEQ[musicBeat % TENSE_SEQ.length];
+        if (tenseNote && tenseVol > 0.005) {
+            playMusicNote(tenseNote[0], tenseNote[1], tenseVol);
+        }
+
+        musicBeat++;
+    }, 400);
+}
+
+function stopMusic() {
+    if (!musicPlaying) return;
+    musicPlaying = false;
+    if (musicIntervalId) {
+        clearInterval(musicIntervalId);
+        musicIntervalId = null;
+    }
+}
+
+function updateMusicLayers() {
+    // Volume adjustments happen inside the interval callback via getSanityT()
+}
+
+// ============================================================
+// INNER MONOLOGUE SYSTEM
+// Event-triggered thoughts that appear during gameplay.
+// ============================================================
+
+const MONOLOGUE_LINES = {
+    nearCivilian: [
+        "I can smell them... warm... alive...",
+        "No. They're people. I was people once.",
+        "Just one bite. Just to stay lucid...",
+        "The hunger is louder than the guilt.",
+    ],
+    afterEating: [
+        "Clarity floods back. At what cost?",
+        "I'm sorry. I needed this more than you.",
+        "The taste of control... bought with blood.",
+        "For a moment, I remember who I was.",
+    ],
+    takeDamage: [
+        "They're right to fear me.",
+        "I deserved that.",
+        "Pain... at least I can still feel.",
+    ],
+    sanityLow: [
+        "Losing... myself... again...",
+        "The edges of thought dissolve...",
+        "HUNGRY. NEED. EAT.",
+    ],
+    sanityMid: [
+        "Stay focused. Stay human.",
+        "I can still choose. I can still think.",
+    ],
+    nearExit: [
+        "Almost there. One more block.",
+        "Safety. If such a thing still exists.",
+    ],
+};
+
+const monologueState = {
+    currentText: '',
+    timer: 0,
+    fadeTimer: 0,
+    cooldown: 0,
+    lastTrigger: '',
+    shownLines: new Set(),
+};
+
+function triggerMonologue(category) {
+    if (monologueState.cooldown > 0) return;
+    if (monologueState.timer > 0) return;
+
+    const lines = MONOLOGUE_LINES[category];
+    if (!lines || lines.length === 0) return;
+
+    // Prefer unshown lines
+    let available = lines.filter(l => !monologueState.shownLines.has(l));
+    if (available.length === 0) {
+        monologueState.shownLines.clear();
+        available = lines;
+    }
+
+    const line = available[Math.floor(Math.random() * available.length)];
+    monologueState.currentText = line;
+    monologueState.timer = 3.0;
+    monologueState.fadeTimer = 0.5;
+    monologueState.cooldown = 5.0; // Don't spam
+    monologueState.lastTrigger = category;
+    monologueState.shownLines.add(line);
+
+    const el = document.getElementById('monologue-display');
+    el.textContent = line;
+    el.classList.add('visible');
+
+    // Update border color based on sanity tier
+    const tier = getSanityTier(sanity);
+    el.style.borderLeftColor = getTierColor(tier);
+}
+
+function updateMonologue(dt) {
+    if (monologueState.cooldown > 0) monologueState.cooldown -= dt;
+
+    if (monologueState.timer > 0) {
+        monologueState.timer -= dt;
+        if (monologueState.timer <= 0) {
+            monologueState.fadeTimer = 0.5;
+        }
+    }
+
+    if (monologueState.timer <= 0 && monologueState.fadeTimer > 0) {
+        monologueState.fadeTimer -= dt;
+        if (monologueState.fadeTimer <= 0) {
+            document.getElementById('monologue-display').classList.remove('visible');
+        }
+    }
+}
+
+function checkMonologueTriggers(state) {
+    if (state.phase !== 'PLAYING') return;
+
+    // Near civilian
+    for (const civ of state.entities.civilians) {
+        if (!civ.alive) continue;
+        const dx = state.zombie.x - civ.x;
+        const dy = state.zombie.y - civ.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 120) {
+            triggerMonologue('nearCivilian');
+            return;
+        }
+    }
+
+    // Near exit
+    const ex = state.level.exit;
+    const edx = state.zombie.x - ex.x;
+    const edy = state.zombie.y - ex.y;
+    const exitDist = Math.sqrt(edx * edx + edy * edy);
+    if (exitDist < 150) {
+        triggerMonologue('nearExit');
+        return;
+    }
+
+    // Sanity-based triggers
+    if (sanity < 3 && sanity > 0) {
+        triggerMonologue('sanityLow');
+    } else if (sanity >= 5 && sanity <= 7) {
+        triggerMonologue('sanityMid');
+    }
+}
+
+// ============================================================
+// GAME FLOW STATE MACHINE
+// Title → Intro → Playing → GameOver/LevelComplete → Title
+// ============================================================
+
+let gameFlow = 'TITLE'; // TITLE, INTRO, PLAYING, PAUSED
+let deathAnimTimer = 0;
+let deathAnimPlayed = false;
+
+const introText = `You woke up different.\n\nThe hunger came first — then the forgetting. Piece by piece, you're losing yourself. Each bite brings clarity, but the cost...\n\nThe guards don't see a person anymore.\nMaybe they're right.\n\nFind the exit. Stay lucid. Try to remember what you were.`;
+
+// ============================================================
+// DEMO LEVEL — Hand-crafted for Polished Demo
+// 120×18 tiles (3840×576). Paced for 4-5 minute playthrough.
+// Sections: Intro → Rising Action → Centerpiece Building (9 rooms) →
+//           Final Gauntlet → Exit
+// ============================================================
+
+const DEMO_LEVEL = {
+    name: 'Demo Level',
+    cols: 120,
+    rows: 18,
+    // INTRO(0-19)  RISING(20-39)  CENTERPIECE(40-75)  GAUNTLET(76-110)  EXIT(111-119)
+    map: [
+        '========================================================================================================================',  // row 0  ceiling
+        '........................................=...........=...........=.......................................................',  // row 1
+        '........................................=...........=...........=.......................................................',  // row 2
+        '........................................=...===.........===.........===.....====.========....===....===.................',  // row 3
+        '........................................=..................................=............................................',  // row 4
+        '........................................=..................................=............................................',  // row 5
+        '........................................=======.....======......======.....=.............................===............',  // row 6  upper floor
+        '........................................=...........=...........=..........=.====.......................................',  // row 7
+        '...........................===....===...=...........=...........=..........=........===.......===.......................',  // row 8
+        '........................................=......====.......====........====.=............................................',  // row 9
+        '............===.........................=..................................=............................................',  // row 10
+        '........................................=..................................=====........................................',  // row 11
+        '........................................=======.....======......======.....=............................................',  // row 12  middle floor
+        '........................................=...........=...........=..........=............................................',  // row 13
+        '....===................===.....===.........===.........===.................=.....===......===......===..===.............',  // row 14
+        '...............................................====.......====........====.=.===........................................',  // row 15
+        '...........................................................................=............................................',  // row 16
+        '==========...=============...===============================================.========..========..==========..===========',  // row 17  ground
+    ],
+    // ~12 civilians spread across 5 sections
+    civilians: [
+        // Intro (3) — safe, teaches eating
+        { col: 5,  row: 17 },
+        { col: 15, row: 17 },
+        { col: 18, row: 17 },
+        // Rising Action (2)
+        { col: 25, row: 17 },
+        { col: 35, row: 17 },
+        // Centerpiece (4) — one per BL, BR, ML, TL rooms
+        { col: 44, row: 17 },  // BL — Welcome Hall (ground, near entry)
+        { col: 67, row: 17 },  // BR — Storage Room (ground, reward for exploring right)
+        { col: 43, row: 12 },  // ML — Abandoned Office (middle floor, left side)
+        { col: 45, row: 3  },  // TL — The Hideout (top platform, deepest detour)
+        // Final Gauntlet (3)
+        { col: 82, row: 17 },
+        { col: 93, row: 17 },
+        { col: 105, row: 17 },
+    ],
+    // ~7 guards across Rising Action, Centerpiece, Final Gauntlet
+    guards: [
+        // Rising Action (1) — col 24 shares platform cols 13-25 with civilian col 25
+        { col: 24, row: 17 },
+        // Centerpiece (3) — BC, MC, TR rooms
+        { col: 55, row: 17 },  // BC — Guard Post (patrols left of gap)
+        { col: 44, row: 12 },  // ML — Abandoned Office guard (same platform as ML civilian, cols 40-46)
+        { col: 70, row: 3  },  // TR — Exit Chamber (patrols on platform near exit)
+        // Final Gauntlet (3)
+        { col: 88,  row: 17 },
+        { col: 100, row: 17 },
+        { col: 106, row: 17 },
+    ],
+    signs: [
+        { col: 3,  row: 16, text: '"QUARANTINE ZONE"' },
+        { col: 42, row: 16, text: '"AUTHORIZED PERSONNEL ONLY"' },
+        { col: 42, row: 11, text: '"Day 47. No rescue."' },
+        { col: 42, row: 5,  text: '"THEY CAN SMELL FEAR"' },
+        { col: 85, row: 16, text: '"EVACUATION POINT AHEAD"' },
+        { col: 113, row: 16, text: '"THEY WALK AMONG US"' },
+    ],
+    monologueTriggers: [
+        { col: 6,  row: 17, category: 'nearCivilian' },
+        { col: 41, row: 17, category: 'nearCivilian' },  // entering building
+        { col: 55, row: 12, category: 'nearCivilian' },  // mid-building (MC room)
+        { col: 110, row: 17, category: 'nearExit' },
+    ],
+};
 
 // ============================================================
 // TILE MAP
@@ -1610,11 +2860,27 @@ function generateLevel(width, height, density, minSanity, seed) {
     return grid;
 }
 
-/** Resize canvas to match current map dimensions */
+/** Resize canvas to match current map dimensions (capped to viewport) */
+const VIEWPORT_COLS = 40; // 40 tiles × 32px = 1280px max viewport width
 function resizeCanvas() {
-    canvas.width = MAP_COLS * TILE_SIZE;
+    canvas.width = Math.min(MAP_COLS, VIEWPORT_COLS) * TILE_SIZE;
     canvas.height = MAP_ROWS * TILE_SIZE;
-    document.getElementById('sanity-bar').style.maxWidth = (MAP_COLS * TILE_SIZE + 4) + 'px';
+    document.getElementById('sanity-bar').style.maxWidth = (canvas.width + 4) + 'px';
+    // Rebuild background for full world width (parallax scrolls across it)
+    if (typeof buildBackground === 'function' && typeof splitmix32 === 'function') {
+        buildBackground(MAP_COLS * TILE_SIZE, canvas.height);
+    }
+}
+
+/** Update camera to follow zombie with smooth lerp + lookahead */
+function updateCamera() {
+    const worldW = MAP_COLS * TILE_SIZE;
+    if (worldW <= canvas.width) { camera.x = 0; return; }
+    // Center on zombie with slight lookahead in movement direction
+    const targetX = zombie.x + zombie.width / 2 - canvas.width / 2
+                    + zombie.vx * 0.15;
+    camera.x += (targetX - camera.x) * 0.1;
+    camera.x = Math.max(0, Math.min(camera.x, worldW - canvas.width));
 }
 
 /** Find a valid spawn point and place the zombie there */
@@ -1766,6 +3032,25 @@ function loadLevel1() {
     findAndSetExit();
 }
 
+/** Load Demo Level: hand-crafted for the polished demo */
+function loadDemoLevel() {
+    currentLevel = 'demo';
+    MAP_COLS = DEMO_LEVEL.cols;
+    MAP_ROWS = DEMO_LEVEL.rows;
+    MAP_DATA = [...DEMO_LEVEL.map];
+    tileMap = MAP_DATA.map(row => Array.from(row).map(ch => ch === '='));
+    resizeCanvas();
+    findAndSetSpawn();
+    placeEntitiesFromLevelData(DEMO_LEVEL);
+    findAndSetExit();
+    // Build sign sprites
+    if (DEMO_LEVEL.signs) {
+        for (const sign of DEMO_LEVEL.signs) {
+            sign._sprite = buildSignSprite(sign.text);
+        }
+    }
+}
+
 /** UI: Generate room-grid level with current slider values */
 function doGenerate() {
     const density = parseInt(document.getElementById('gen-density').value) / 100;
@@ -1839,6 +3124,7 @@ const drift = {
 // for natural-feeling falloff.
 const particles = [];
 const camera = {
+    x: 0,                 // world-space X offset (scrolling)
     shakeX: 0,
     shakeY: 0,
     shakeIntensity: 0,
@@ -1893,30 +3179,48 @@ const goneOverlay = document.getElementById('gone-overlay');
 const levelCompleteOverlay = document.getElementById('level-complete-overlay');
 const levelCompleteStats = document.getElementById('level-complete-stats');
 
-function updateGamePhase(state) {
+function updateGamePhase(state, dt) {
     switch (state.phase) {
         case 'PLAYING':
             // End-condition checks: HP before sanity (edge case #3)
             if (state.zombie.hp <= 0) {
                 state.phase = 'GAME_OVER_HP';
+                if (!deathAnimPlayed) {
+                    deathAnimPlayed = true;
+                    deathAnimTimer = 0.5;
+                    sfxDie();
+                    stopMusic();
+                }
                 break;
             }
             if (sanity <= 0) {
                 state.phase = 'GAME_OVER_SANITY';
+                if (!deathAnimPlayed) {
+                    deathAnimPlayed = true;
+                    deathAnimTimer = 0.5;
+                    sfxDie();
+                    stopMusic();
+                }
                 break;
             }
             if (checkExitZone(state)) {
                 state.phase = 'LEVEL_COMPLETE';
+                sfxLevelComplete();
+                stopMusic();
                 // Populate stats overlay
                 const mins = Math.floor(state.stats.timeElapsed / 60);
                 const secs = Math.floor(state.stats.timeElapsed % 60);
                 const timeStr = `${mins}:${secs.toString().padStart(2, '0')}`;
                 const totalCivs = state.entities.civilians.length;
+                const aliveCivs = state.entities.civilians.filter(c => c.alive).length;
                 levelCompleteStats.innerHTML = [
                     `Time: ${timeStr}`,
                     `Civilians Eaten: ${state.stats.civiliansEaten} / ${totalCivs}`,
                     `HP Remaining: ${state.zombie.hp} / ${state.zombie.maxHP}`,
                     `Guards Pounced: ${state.stats.guardsPounced}`,
+                    '',
+                    '<span style="color:#53d769;font-size:18px">Thanks for playing the demo!</span>',
+                    '<span style="color:#888;font-size:12px">More coming soon...</span>',
                 ].join('<br>');
                 levelCompleteOverlay.classList.add('active');
                 break;
@@ -1924,28 +3228,105 @@ function updateGamePhase(state) {
             break;
 
         case 'GAME_OVER_SANITY':
-            goneOverlay.classList.add('active');
+            if (!goneOverlay.classList.contains('active')) goneOverlay.classList.add('active');
+            if (deathAnimTimer > 0) { deathAnimTimer -= dt; break; }
             if (keysDown.has('r') || keysDown.has('R')) {
                 resetGameState();
+                startMusic();
+            }
+            if (keysDown.has('t') || keysDown.has('T')) {
+                goToTitle();
             }
             break;
 
         case 'GAME_OVER_HP':
-            gameOverHpOverlay.classList.add('active');
+            if (!gameOverHpOverlay.classList.contains('active')) gameOverHpOverlay.classList.add('active');
+            if (deathAnimTimer > 0) { deathAnimTimer -= dt; break; }
             if (keysDown.has('r') || keysDown.has('R')) {
                 resetGameState();
+                startMusic();
+            }
+            if (keysDown.has('t') || keysDown.has('T')) {
+                goToTitle();
             }
             break;
 
         case 'LEVEL_COMPLETE':
             if (keysDown.has('r') || keysDown.has('R')) {
                 resetGameState();
+                startMusic();
+            }
+            if (keysDown.has('t') || keysDown.has('T')) {
+                goToTitle();
             }
             break;
     }
 }
 
+function goToTitle() {
+    stopMusic();
+    GameState.phase = 'PLAYING'; // Reset for next game
+    gameFlow = 'TITLE';
+    deathAnimPlayed = false;
+    deathAnimTimer = 0;
+    // Clear all overlays
+    goneOverlay.classList.remove('active');
+    gameOverHpOverlay.classList.remove('active');
+    levelCompleteOverlay.classList.remove('active');
+    document.getElementById('pause-overlay').classList.remove('active');
+    document.getElementById('monologue-display').classList.remove('visible');
+    // Show title
+    document.getElementById('title-overlay').classList.remove('hidden');
+    // Hide sanity bar during title
+    document.getElementById('sanity-bar').style.display = 'none';
+}
+
+function startGame() {
+    ensureAudio();
+    gameFlow = 'INTRO';
+    document.getElementById('title-overlay').classList.add('hidden');
+    // Show intro card
+    const introOverlay = document.getElementById('intro-overlay');
+    const introContent = document.getElementById('intro-text-content');
+    introContent.innerHTML = introText.split('\n').join('<br>');
+    introOverlay.classList.add('active');
+    setTimeout(() => introOverlay.classList.add('visible'), 50);
+}
+
+function startPlaying() {
+    gameFlow = 'PLAYING';
+    document.getElementById('intro-overlay').classList.remove('active');
+    document.getElementById('intro-overlay').classList.remove('visible');
+    // Show sanity bar
+    document.getElementById('sanity-bar').style.display = 'flex';
+    // Load and reset
+    loadDemoLevel();
+    resetGameState();
+    // Auto drain OFF — sanity drains on jump and damage instead
+    GameState.sanity.drainEnabled = false;
+    drainCheckbox.checked = false;
+    // Start music
+    startMusic();
+}
+
+function togglePause() {
+    if (gameFlow !== 'PLAYING' && gameFlow !== 'PAUSED') return;
+    if (GameState.phase !== 'PLAYING' && gameFlow !== 'PAUSED') return;
+
+    if (gameFlow === 'PAUSED') {
+        gameFlow = 'PLAYING';
+        document.getElementById('pause-overlay').classList.remove('active');
+        input.jumpPressed = false; // clear stale jump input from pause
+    } else {
+        gameFlow = 'PAUSED';
+        document.getElementById('pause-overlay').classList.add('active');
+    }
+}
+
 function resetGameState() {
+    // Reset camera to spawn
+    camera.x = 0;
+
     // Reset zombie
     findAndSetSpawn();
     zombie.hp = ZOMBIE_MAX_HP;
@@ -1959,15 +3340,34 @@ function resetGameState() {
     zombie.wasGrounded = false;
     zombie.lastVy = 0;
 
+    // Clear stale input — prevents jump firing on first frame after
+    // restart/resume when jump key was held during game-over or pause
+    input.jumpPressed = false;
+    input.jumpHeld = false;
+
     // Reset sanity
     sanity = 12;
     GameState.sanity.value = 12;
     sanitySlider.value = 12;
 
+    // Reset death animation
+    deathAnimPlayed = false;
+    deathAnimTimer = 0;
+
+    // Reset monologue
+    monologueState.currentText = '';
+    monologueState.timer = 0;
+    monologueState.fadeTimer = 0;
+    monologueState.cooldown = 0;
+    monologueState.lastTrigger = '';
+    document.getElementById('monologue-display').classList.remove('visible');
+
     // Reset entities — use level-specific placement
     GameState.entities.civilians = [];
     GameState.entities.guards = [];
-    if (currentLevel === 'level1') {
+    if (currentLevel === 'demo') {
+        placeEntitiesFromLevelData(DEMO_LEVEL);
+    } else if (currentLevel === 'level1') {
         placeEntitiesFromLevelData(LEVEL_1);
     } else if (currentLevel === 'generated' && generateLevel._lastRoomGrid) {
         const entityRng = splitmix32((parseInt(document.getElementById('gen-seed').value) || 42) + 7);
@@ -2026,7 +3426,16 @@ function damageZombie(state, amount) {
     state.zombie.hp = Math.max(0, state.zombie.hp - amount);
     state.zombie.invincibleTimer = INVINCIBILITY_DURATION;
     state.stats.damagesTaken++;
+
+    // Sanity cost on damage
+    sanity = Math.max(0, sanity - SANITY_COST_DAMAGE);
+    state.sanity.value = sanity;
+    sanitySlider.value = sanity;
+    updateSanityUI();
+
     triggerShake(3, 0.1);
+    sfxDamage();
+    triggerMonologue('takeDamage');
 }
 
 function updateHealth(state, dt) {
@@ -2162,15 +3571,21 @@ function updateCivilians(state, dt) {
 function renderCivilians(state) {
     for (const civ of state.entities.civilians) {
         if (!civ.alive) continue;
-        // Orange when fleeing, cyan when wandering
-        ctx.fillStyle = civ.state === 'FLEE' ? '#ff6b35' : '#00ddff';
-        ctx.fillRect(civ.x, civ.y, civ.width, civ.height);
-        // "C" label
-        ctx.fillStyle = '#000';
-        ctx.font = 'bold 14px Consolas, monospace';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('C', civ.x + civ.width / 2, civ.y + civ.height / 2);
+        const sprite = civ.state === 'FLEE' ? CIVILIAN_SPRITES.flee : CIVILIAN_SPRITES.idle;
+        if (sprite) {
+            if (!civ.facingRight) {
+                ctx.save();
+                ctx.translate(civ.x + civ.width, civ.y);
+                ctx.scale(-1, 1);
+                ctx.drawImage(sprite, 0, 0);
+                ctx.restore();
+            } else {
+                ctx.drawImage(sprite, civ.x, civ.y);
+            }
+        } else {
+            ctx.fillStyle = civ.state === 'FLEE' ? '#ff6b35' : '#00ddff';
+            ctx.fillRect(civ.x, civ.y, civ.width, civ.height);
+        }
     }
 }
 
@@ -2203,6 +3618,9 @@ function checkEatCollision(state) {
             state.stats.civiliansEaten++;
 
             // Death scream
+            sfxEat();
+            sfxScream();
+            triggerMonologue('afterEating');
             broadcastScream(state, civ.x + civ.width / 2, civ.y + civ.height / 2);
 
             // Reassign guards (eaten civilian's guard needs a new assignment)
@@ -2229,6 +3647,7 @@ function broadcastScream(state, x, y) {
             guard.state = 'RESPONDING_TO_SCREAM';
             guard.alertTarget = { x: x, y: y };
             guard.alertTimer = SCREAM_ALERT_DURATION;
+            sfxGuardAlert();
         }
     }
     triggerShake(1.5, 0.08);
@@ -2413,29 +3832,37 @@ function renderGuards(state) {
     for (const guard of state.entities.guards) {
         if (!guard.alive) continue;
 
-        // Color by state: red (patrol), magenta (chase), yellow (scream response)
+        let sprite;
         if (guard.state === 'RESPONDING_TO_SCREAM') {
-            ctx.fillStyle = '#ffdd00';
+            sprite = GUARD_SPRITES.alert;
         } else if (guard.state === 'CHASE') {
-            ctx.fillStyle = '#ff00ff';
+            sprite = GUARD_SPRITES.chase;
+        } else {
+            sprite = GUARD_SPRITES.patrol;
+        }
+
+        if (sprite) {
+            if (!guard.facingRight) {
+                ctx.save();
+                ctx.translate(guard.x + guard.width, guard.y);
+                ctx.scale(-1, 1);
+                ctx.drawImage(sprite, 0, 0);
+                ctx.restore();
+            } else {
+                ctx.drawImage(sprite, guard.x, guard.y);
+            }
         } else {
             ctx.fillStyle = '#ff3333';
-        }
-        ctx.fillRect(guard.x, guard.y, guard.width, guard.height);
-
-        // Cyan outline when guarding a civilian
-        if (guard.guardedCivilian && guard.guardedCivilian.alive) {
-            ctx.strokeStyle = '#00ddff';
-            ctx.lineWidth = 2;
-            ctx.strokeRect(guard.x, guard.y, guard.width, guard.height);
+            ctx.fillRect(guard.x, guard.y, guard.width, guard.height);
         }
 
-        // "!" label
-        ctx.fillStyle = '#000';
-        ctx.font = 'bold 16px Consolas, monospace';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('!', guard.x + guard.width / 2, guard.y + guard.height / 2);
+        // Alert indicator for chasing/responding guards
+        if (guard.state === 'CHASE' || guard.state === 'RESPONDING_TO_SCREAM') {
+            ctx.fillStyle = guard.state === 'CHASE' ? '#ff3333' : '#ffdd00';
+            ctx.font = 'bold 14px Consolas, monospace';
+            ctx.textAlign = 'center';
+            ctx.fillText('!', guard.x + guard.width / 2, guard.y - 6);
+        }
     }
 }
 
@@ -2700,12 +4127,36 @@ const keysDown = new Set();
 
 window.addEventListener('keydown', (e) => {
     if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown',
-         'a', 'd', 'w', 's', ' ', 'r', 'R'].includes(e.key)) {
+         'a', 'd', 'w', 's', ' ', 'r', 'R', 'Escape', 'Enter', 't', 'T', 'm', 'M'].includes(e.key)) {
         e.preventDefault();
     }
+
+    // Game flow controls
+    if (e.key === 'Enter') {
+        if (gameFlow === 'TITLE') { startGame(); return; }
+        if (gameFlow === 'INTRO') { startPlaying(); return; }
+    }
+    if (e.key === 'Escape') {
+        if (gameFlow === 'PLAYING' || gameFlow === 'PAUSED') { togglePause(); return; }
+    }
+    if (e.key === 'm' || e.key === 'M') {
+        toggleMute();
+        return;
+    }
+
+    // Dev mode toggle (Ctrl+Shift+D)
+    if (e.key === 'D' && e.ctrlKey && e.shiftKey) {
+        devModeVisible = !devModeVisible;
+        document.getElementById('debug-panel').style.display = devModeVisible ? 'block' : 'none';
+        document.getElementById('tuning-toggle').style.display = devModeVisible ? 'block' : 'none';
+        if (!devModeVisible) tuningPanel.classList.remove('open');
+        document.getElementById('sanity-bar').style.display =
+            (gameFlow === 'PLAYING' || gameFlow === 'PAUSED') ? 'flex' : 'none';
+        return;
+    }
+
     if (!keysDown.has(e.key)) {
         keysDown.add(e.key);
-        // Edge-triggered jump detection
         if (e.key === ' ' || e.key === 'w' || e.key === 'W' || e.key === 'ArrowUp') {
             input.jumpPressed = true;
         }
@@ -2985,6 +4436,8 @@ function updateJumpTimers(dt) {
             const shakeIntensity = Math.min(LANDING_SHAKE_INTENSITY, landVy / 300);
             triggerShake(shakeIntensity, 0.08);
         }
+
+        sfxLand();
     }
 
     zombie.wasGrounded = zombie.grounded;
@@ -3014,15 +4467,21 @@ function updateJump() {
         zombie.jumpBufferTimer = 0;
         zombie.jumpCut = false; // reset cut flag for new jump
 
-        // Jump launch squash — compress vertically, stretch horizontally.
-        // Must happen on the SAME FRAME as the jump for responsiveness
-        // (Swink: input → feedback latency must be zero).
+        // Jump launch squash
         zombie.scaleX = JUMP_SQUASH_X;
         zombie.scaleY = JUMP_SQUASH_Y;
 
         // Dust burst at feet
         emitDust(zombie.x + zombie.width / 2, zombie.y + zombie.height,
             4, 0, 40);
+
+        // Sanity cost per jump
+        sanity = Math.max(0, sanity - SANITY_COST_JUMP);
+        GameState.sanity.value = sanity;
+        sanitySlider.value = sanity;
+        updateSanityUI();
+
+        sfxJump();
     }
 
     // Variable jump height: releasing jump early cuts upward velocity (once)
@@ -3362,29 +4821,44 @@ resizeCanvas();
 function render() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // --- Apply screen shake offset ---
-    // All rendering is offset by the shake. Save/restore ensures
-    // UI elements (drawn outside render()) are not affected.
-    ctx.save();
-    ctx.translate(camera.shakeX, camera.shakeY);
+    // --- Draw background layer with parallax scrolling ---
+    if (bgCanvas) {
+        const parallaxX = Math.floor(camera.x * 0.3);
+        // Draw viewport-sized slice of the full background
+        const srcX = Math.min(parallaxX, bgCanvas.width - canvas.width);
+        ctx.drawImage(bgCanvas,
+            srcX, 0, canvas.width, canvas.height,  // source rect
+            0, 0, canvas.width, canvas.height);     // dest rect
+    }
 
-    // --- Draw tiles ---
-    const pathSet = generateLevel._lastPathSet;
+    // --- Apply camera offset + screen shake ---
+    ctx.save();
+    ctx.translate(-camera.x + camera.shakeX, camera.shakeY);
+
+    // --- Draw tiles using pixel art sprites (culled to visible cols) ---
+    const startCol = Math.max(0, Math.floor(camera.x / TILE_SIZE));
+    const endCol = Math.min(MAP_COLS, Math.ceil((camera.x + canvas.width) / TILE_SIZE) + 1);
     for (let row = 0; row < MAP_ROWS; row++) {
-        for (let col = 0; col < MAP_COLS; col++) {
+        for (let col = startCol; col < endCol; col++) {
             if (tileMap[row][col]) {
-                if (pathSet) {
-                    const roomCol = Math.floor(col / ROOM_W);
-                    const roomRow = Math.floor(row / ROOM_H);
-                    ctx.fillStyle = pathSet.has(`${roomCol},${roomRow}`) ? '#456b8a' : '#3a506b';
+                const sprite = getTileSprite(col, row);
+                if (sprite) {
+                    ctx.drawImage(sprite, col * TILE_SIZE, row * TILE_SIZE);
                 } else {
                     ctx.fillStyle = '#3a506b';
+                    ctx.fillRect(col * TILE_SIZE, row * TILE_SIZE, TILE_SIZE, TILE_SIZE);
                 }
-                ctx.fillRect(col * TILE_SIZE, row * TILE_SIZE, TILE_SIZE, TILE_SIZE);
-                // Subtle border for tile edges
-                ctx.strokeStyle = '#2c3e50';
-                ctx.lineWidth = 1;
-                ctx.strokeRect(col * TILE_SIZE, row * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+            }
+        }
+    }
+
+    // --- Draw environmental signs ---
+    if (currentLevel === 'demo' && DEMO_LEVEL.signs) {
+        for (const sign of DEMO_LEVEL.signs) {
+            if (sign._sprite) {
+                const sx = sign.col * TILE_SIZE;
+                const sy = sign.row * TILE_SIZE;
+                ctx.drawImage(sign._sprite, sx, sy);
             }
         }
     }
@@ -3449,8 +4923,30 @@ function render() {
         ctx.globalAlpha = flashCycle % 2 === 0 ? 1.0 : 0.3;
     }
 
-    ctx.fillStyle = zombieColor;
-    ctx.fillRect(zombie.x, zombie.y, zombie.width, zombie.height);
+    // Select sprite based on sanity tier and walk animation
+    const walkFrame = zombie.grounded && Math.abs(zombie.vx) > 30
+        ? (Math.floor(Date.now() / 150) % 2) + 1 : 0;
+    let spriteSet;
+    if (sanity >= 7) spriteSet = ZOMBIE_SPRITES.lucid;
+    else if (sanity >= 4) spriteSet = ZOMBIE_SPRITES.slipping;
+    else spriteSet = ZOMBIE_SPRITES.feral;
+
+    const zSprite = spriteSet[walkFrame];
+    if (zSprite) {
+        // Flip sprite based on facing direction
+        if (zombie.vx < -10) {
+            ctx.save();
+            ctx.translate(zombie.x + zombie.width, zombie.y);
+            ctx.scale(-1, 1);
+            ctx.drawImage(zSprite, 0, 0);
+            ctx.restore();
+        } else {
+            ctx.drawImage(zSprite, zombie.x, zombie.y);
+        }
+    } else {
+        ctx.fillStyle = zombieColor;
+        ctx.fillRect(zombie.x, zombie.y, zombie.width, zombie.height);
+    }
 
     // Darken overlay when body is resisting direction change
     if (resisting) {
@@ -3458,20 +4954,12 @@ function render() {
         ctx.fillRect(zombie.x, zombie.y, zombie.width, zombie.height);
     }
 
-    // Draw the tier color as an outline during flash so the zombie
-    // doesn't become invisible — the flash overlays, not replaces
+    // Drift flash outline
     if (drift.flashTimer > 0) {
         ctx.strokeStyle = getTierColor(tier);
         ctx.lineWidth = 2;
         ctx.strokeRect(zombie.x, zombie.y, zombie.width, zombie.height);
     }
-
-    // "Z" label
-    ctx.fillStyle = '#000';
-    ctx.font = 'bold 18px Consolas, monospace';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('Z', zombie.x + zombie.width / 2, zombie.y + zombie.height / 2);
 
     // Restore alpha after iframe flash
     ctx.globalAlpha = 1.0;
@@ -3490,7 +4978,7 @@ function render() {
         ctx.fillText(arrowDir, arrowX, zombie.y + zombie.height / 2);
     }
 
-    ctx.restore(); // end screen shake transform
+    ctx.restore(); // end camera + screen shake transform
 
     // --- Sanity vignette (drawn over everything, screen-space) ---
     // Drawn AFTER restoring shake transform so the vignette stays
@@ -3505,57 +4993,78 @@ function render() {
     renderHUD();
 }
 
-/** Draw player-facing HUD: sanity bar + HP hearts */
+/** Draw player-facing HUD: sanity bar + HP hearts (polished pixel art style) */
 function renderHUD() {
-    const barX = 16, barY = 20;
-    const barW = 160, barH = 12;
+    const barX = 16, barY = 16;
+    const barW = 160, barH = 14;
+
+    // --- HUD background panel ---
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+    ctx.fillRect(barX - 6, barY - 14, barW + 16, 56);
 
     // --- Sanity label ---
-    ctx.font = '10px Consolas, monospace';
+    ctx.font = 'bold 10px Consolas, monospace';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'bottom';
-    ctx.fillStyle = '#fff';
+    const tier = getSanityTier(sanity);
+    ctx.fillStyle = getTierColor(tier);
     ctx.fillText('SANITY', barX, barY - 2);
+    // Tier text
+    ctx.fillStyle = '#888';
+    ctx.font = '9px Consolas, monospace';
+    ctx.textAlign = 'right';
+    ctx.fillText(tier.toUpperCase(), barX + barW, barY - 2);
 
     // --- Sanity bar background ---
-    ctx.fillStyle = '#333';
+    ctx.fillStyle = '#1a1a2a';
     ctx.fillRect(barX, barY, barW, barH);
-    ctx.strokeStyle = '#555';
+    // Border with tier glow
+    ctx.strokeStyle = getTierColor(tier);
     ctx.lineWidth = 1;
+    ctx.globalAlpha = 0.5;
     ctx.strokeRect(barX, barY, barW, barH);
+    ctx.globalAlpha = 1.0;
 
-    // --- Sanity bar fill ---
-    const tier = getSanityTier(sanity);
+    // --- Sanity bar fill with gradient ---
     const fillW = Math.max(0, (sanity / 12) * barW);
     if (fillW > 0) {
-        switch (tier) {
-            case 'Lucid':    ctx.fillStyle = '#4a4'; break;
-            case 'Slipping': ctx.fillStyle = '#da4'; break;
-            case 'Feral':    ctx.fillStyle = '#d44'; break;
-            default:         ctx.fillStyle = '#d44'; break;
-        }
+        const barGrad = ctx.createLinearGradient(barX, barY, barX, barY + barH);
+        const tierColor = getTierColor(tier);
+        barGrad.addColorStop(0, tierColor);
+        barGrad.addColorStop(1, '#1a1a2a');
+        ctx.fillStyle = barGrad;
         ctx.fillRect(barX + 1, barY + 1, fillW - 2, barH - 2);
+
+        // Shine effect on top
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+        ctx.fillRect(barX + 1, barY + 1, fillW - 2, 3);
     }
 
-    // --- HP hearts ---
+    // --- HP hearts (pixel art style) ---
     const heartY = barY + barH + 6;
-    const heartSize = 10;
+    const heartSize = 12;
     const heartGap = 3;
     for (let i = 0; i < zombie.maxHP; i++) {
         const hx = barX + i * (heartSize + heartGap);
-        if (i < zombie.hp) {
-            ctx.fillStyle = '#e33';
-        } else {
-            ctx.fillStyle = '#555';
+        const filled = i < zombie.hp;
+
+        // Heart shape (pixel art style)
+        ctx.fillStyle = filled ? '#e33' : '#333';
+        // Top bumps
+        ctx.fillRect(hx + 1, heartY, 4, 3);
+        ctx.fillRect(hx + 7, heartY, 4, 3);
+        // Middle full
+        ctx.fillRect(hx, heartY + 2, heartSize, 4);
+        // Taper
+        ctx.fillRect(hx + 1, heartY + 6, heartSize - 2, 2);
+        ctx.fillRect(hx + 2, heartY + 8, heartSize - 4, 2);
+        ctx.fillRect(hx + 3, heartY + 10, heartSize - 6, 1);
+
+        // Highlight on filled hearts
+        if (filled) {
+            ctx.fillStyle = 'rgba(255, 200, 200, 0.3)';
+            ctx.fillRect(hx + 2, heartY + 1, 3, 2);
         }
-        // Simple diamond shape
-        ctx.beginPath();
-        ctx.moveTo(hx + heartSize / 2, heartY);
-        ctx.lineTo(hx + heartSize, heartY + heartSize / 2);
-        ctx.lineTo(hx + heartSize / 2, heartY + heartSize);
-        ctx.lineTo(hx, heartY + heartSize / 2);
-        ctx.closePath();
-        ctx.fill();
     }
 }
 
@@ -3692,6 +5201,8 @@ const tuningParams = [
 
     { section: 'Sanity System' },
     { label: 'Drain Rate', key: 'SANITY_DRAIN_RATE', min: 0.05, max: 0.5, step: 0.01 },
+    { label: 'Jump Cost', key: 'SANITY_COST_JUMP', min: 0.1, max: 2.0, step: 0.1 },
+    { label: 'Damage Cost', key: 'SANITY_COST_DAMAGE', min: 0.5, max: 3.0, step: 0.25 },
     { label: 'Per Eat', key: 'SANITY_PER_EAT', min: 1, max: 8, step: 1 },
     { label: 'Scream Range', key: 'SCREAM_ALERT_RANGE', min: 32, max: 256, step: 16 },
     { label: 'Scream Dur', key: 'SCREAM_ALERT_DURATION', min: 1.0, max: 6.0, step: 0.5 },
@@ -3763,6 +5274,7 @@ function buildTuningPanel() {
             <button onclick="doRandomGenerate()">Random</button>
         </div>
         <div class="gen-button-row">
+            <button onclick="loadDemoLevel()">Demo</button>
             <button onclick="loadLevel1()">Level 1</button>
             <button onclick="loadPresetGauntlet()">Gauntlet</button>
         </div>
@@ -3808,12 +5320,11 @@ function gameLoop(currentTime) {
     const deltaTime = (currentTime - lastTime) / 1000;
     lastTime = currentTime;
 
-    // Cap dt to prevent physics explosion on tab-switch or lag spike
     const dt = Math.min(deltaTime, 0.05);
 
-    // Skip the first frame (deltaTime would be huge)
     if (deltaTime > 0 && deltaTime < 1) {
-        if (GameState.phase === 'PLAYING') {
+        // Only update game systems when actually playing
+        if (gameFlow === 'PLAYING' && GameState.phase === 'PLAYING') {
             processInput();
             updateSanityDrain(GameState, dt);
             updateHealth(GameState, dt);
@@ -3825,11 +5336,36 @@ function gameLoop(currentTime) {
             checkGuardCollision(GameState);
             updateDrift(dt);
             updateJuice(dt);
+            updateMonologue(dt);
+            checkMonologueTriggers(GameState);
+            updateMusicLayers();
+        } else if (gameFlow === 'PLAYING') {
+            // Game over / level complete — still process some things
+            updateJuice(dt);
+            updateMonologue(dt);
         }
-        updateGamePhase(GameState);
-        render();
-        updateDebugPanel();
-        updateSanityUI();
+
+        if (gameFlow !== 'TITLE' && gameFlow !== 'INTRO') {
+            updateGamePhase(GameState, dt);
+        }
+
+        // Update camera before rendering
+        if (gameFlow === 'PLAYING' || gameFlow === 'PAUSED') {
+            updateCamera();
+        }
+
+        // Always render (even during title/intro for background)
+        if (gameFlow === 'PLAYING' || gameFlow === 'PAUSED' ||
+            (gameFlow !== 'TITLE' && gameFlow !== 'INTRO')) {
+            render();
+        }
+
+        if (devModeVisible) {
+            updateDebugPanel();
+        }
+        if (gameFlow === 'PLAYING' || gameFlow === 'PAUSED') {
+            updateSanityUI();
+        }
     }
 
     requestAnimationFrame(gameLoop);
@@ -3841,10 +5377,53 @@ function gameLoop(currentTime) {
 // in the rendering section. Tuning panel is built dynamically.
 // ============================================================
 
+// Dev mode visibility flag
+let devModeVisible = false;
+
 function init() {
+    // Build all pixel art sprites
+    buildTileSprites();
+    buildZombieSprites();
+    buildCivilianSprites();
+    buildGuardSprites();
+
     buildTuningPanel();
     updateSanityUI();
-    loadLevel1();
+
+    // Load demo level as default (but don't show until game starts)
+    loadDemoLevel();
+
+    // Start in title mode
+    gameFlow = 'TITLE';
+    document.getElementById('title-overlay').classList.remove('hidden');
+
+    // Hide dev panels by default
+    document.getElementById('debug-panel').style.display = 'none';
+    document.getElementById('tuning-toggle').style.display = 'none';
+    document.getElementById('sanity-bar').style.display = 'none';
+
+    // Pause menu button handlers
+    document.getElementById('pause-resume').addEventListener('click', () => {
+        togglePause();
+    });
+    document.getElementById('pause-restart').addEventListener('click', () => {
+        togglePause();
+        resetGameState();
+        startMusic();
+    });
+    document.getElementById('pause-quit').addEventListener('click', () => {
+        togglePause();
+        goToTitle();
+    });
+
+    // Mute button
+    document.getElementById('mute-btn').addEventListener('click', toggleMute);
+
+    // Title screen click to start
+    document.getElementById('title-overlay').addEventListener('click', () => {
+        if (gameFlow === 'TITLE') startGame();
+    });
+
     requestAnimationFrame(gameLoop);
 }
 

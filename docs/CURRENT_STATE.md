@@ -1,11 +1,11 @@
 # Zombie Movement Toy — Current State
 
-**Version:** Sprint 3 complete (Milestone 1 — Vertical Slice)
-**Last updated:** Feb 2026
+**Version:** Milestone 2 — Polished Demo (complete)
+**Last updated:** Feb 10, 2026
 
 ## Overview
 
-Single-file HTML/JS movement prototype (`index.html`). Opens directly in any modern browser — no build step, no server, no dependencies.
+Single-file HTML/JS game (`index.html`). Opens directly in any modern browser — no build step, no server, no dependencies. Evolved from a movement prototype through a vertical slice into a polished demo with pixel art, procedural audio, and full game flow.
 
 ## Systems Implemented
 
@@ -150,30 +150,125 @@ Purpose-built level demonstrating the complete core loop. 50×18 tiles (1600×57
 - `currentLevel` tracking: `loadLevel1()` / `loadPresetGauntlet()` set this for proper `resetGameState()` entity repopulation
 - `placeEntitiesFromLevelData(levelData)` — shared helper for placing entities from level data objects with explicit positions
 
-### Player-Facing HUD (Sprint 3)
+### Player-Facing HUD (Polished — Milestone 2)
 Canvas-drawn HUD overlaying the game, rendered in screen-space after vignette effects.
 
-- **Sanity bar**: top-left (16, 20), 160×12px, colored by tier (green=Lucid, yellow=Slipping, red=Feral)
-- **HP hearts**: below sanity bar, diamond shapes, red=filled, gray=empty
+- **Sanity bar**: top-left, gradient fill with tier glow effect (green=Lucid, yellow=Slipping, red=Feral)
+- **HP hearts**: below sanity bar, pixel-art heart shapes, red=filled, gray=empty
 - `renderHUD()` called at end of `render()` in screen-space
 
 ### Level Exit + Level Complete (Sprint 2)
 - `findAndSetExit()` — scans rightmost columns for valid 2-tile-high open space above ground
 - `checkExitZone(state)` — AABB overlap zombie ↔ exit zone
 - `renderExitZone()` — gold/yellow rectangle with pulsing border + "EXIT" label, drawn after tiles but before entities
-- **LEVEL_COMPLETE phase**: green overlay with stats (time, civilians eaten, HP, guards pounced). R to restart.
+- **LEVEL_COMPLETE phase**: green overlay with stats (time, civilians eaten, HP, guards pounced). R to restart, T for title.
 - Time tracking: `GameState.stats.timeElapsed += dt` in game loop
 - Exit placed on all map change events (init, reset, generate, Gauntlet)
 
+### Pixel Art Sprites (Milestone 2)
+Replaces all colored rectangles with pixel art rendered on canvas.
+
+- **Zombie**: 3 sanity states (Lucid, Slipping, Feral) x 3 walk animation frames. Visual state changes communicate sanity tier without reading the HUD.
+- **Civilian**: 2 poses (idle, flee). Immediately identifiable as food sources.
+- **Guard**: 3 states (patrol, chase, alert). Immediately identifiable as threats.
+
+### Environment Tileset (Milestone 2)
+4 tile variants replacing solid-color blocks:
+
+- **Ground**: base terrain tile
+- **Wall**: vertical blocking tile
+- **Platform**: traversable horizontal surface
+- **Surface**: top-of-ground decorative variant
+
+Tiles read clearly as solid vs. empty. Consistent pixel art style across the level.
+
+### City Skyline Background (Milestone 2)
+Layered background behind the gameplay area:
+
+- **Parallax stars**: distant points that shift subtly with camera movement
+- **Building silhouettes**: city skyline shapes creating atmospheric depth
+- Drawn behind all gameplay elements, in world-space with parallax offset
+
+### Audio System — Web Audio API (Milestone 2)
+Procedural sound effects and music generated entirely via Web Audio API oscillators and noise. No audio files — everything is synthesized at runtime.
+
+#### Procedural SFX (8 effects)
+- **Jump**: upward pitch sweep
+- **Land**: short thud/impact
+- **Eat**: crunchy/satisfying chomp
+- **Scream**: civilian death scream (alerts guards)
+- **Damage**: hit/pain indicator
+- **Guard alert**: guard detection warning
+- **Die**: death sound
+- **Level complete**: victory fanfare/chime
+
+#### 2-Layer Music System
+- **Calm layer**: ambient/melodic oscillator pattern, full volume at high sanity
+- **Tense layer**: dissonant/urgent oscillator pattern, full volume at low sanity
+- **Crossfade**: layers blend based on current sanity value — smooth transition from calm to tense as sanity drops
+- Built entirely with Web Audio oscillators (no samples)
+
+#### Mute Toggle
+- **M key** or on-screen button to mute/unmute all audio
+- State persists during gameplay session
+
+### Title Screen + Game Flow (Milestone 2)
+Full game flow state machine replacing the direct-to-gameplay launch.
+
+- **Title screen**: "Brains for Breakfast" title display, press to start
+- **Intro text card**: narrative setup before gameplay begins
+- **Pause menu**: Escape key toggles pause overlay during gameplay
+- **Game over screens**: "R to Restart, T for Title" on both death types
+- **Level complete screen**: stats display with "R to Restart, T for Title"
+- **Death animation delay**: brief pause after dying before restart input is accepted
+- **Flow**: Title -> Intro -> Playing -> GameOver/LevelComplete -> Title
+
+### Inner Monologue System (Milestone 2)
+Event-triggered text overlays showing the zombie's internal thoughts. Adds narrative flavor and communicates game state through character voice.
+
+Trigger events:
+- **Near civilian**: zombie notices potential food
+- **After eating**: reaction to consuming a brain
+- **Taking damage**: pain/frustration response
+- **Sanity thresholds**: thoughts change as sanity drops through tier boundaries
+- **Near exit**: awareness of the level exit
+
+Text appears as overlay near the zombie, fades after a brief display duration.
+
+### Environmental Signs (Milestone 2)
+3 readable signs placed in the demo level. Player walks near a sign to read it. Signs provide world-building flavor text and hint at the game's backstory.
+
+### Demo Level (Milestone 2)
+Hand-crafted replacement for the Level 1 "First Run" level, designed for the polished demo experience.
+
+- **Size**: 120x18 tiles (3840x576 canvas)
+- **Civilians**: 12 across 5 sections (Intro 3, Rising 2, Centerpiece 4, Gauntlet 3)
+- **Guards**: 7 across 4 sections (Rising 1, Centerpiece 3, Gauntlet 3)
+- **Signs**: 6 environmental narrative signs
+- **Pacing**: Intro (safe, teaches eating) → Rising Action (first guard) → Centerpiece Building (9 rooms, vertical exploration) → Final Gauntlet (gaps + guards) → Exit
+- Guard coverage: 5/12 civilians guarded, 3 Intro intentionally free, 4 exploration rewards
+- Sanity economy: jump-cost + damage-cost driven (auto drain OFF). Generous on critical path — demo is completable by new players.
+
+### Dev Mode (Milestone 2)
+Debug and tuning panels hidden by default for a clean player experience.
+
+- **Ctrl+Shift+D**: toggles dev mode on/off
+- When active: debug panel, tuning panel, and dev-only UI elements become visible
+- When hidden: clean gameplay view with only the player-facing HUD
+
 ### UI
-- **Sanity slider**: top bar, range 0-12, real-time, shows value + tier name
-- **Auto Drain checkbox**: next to slider, toggles continuous sanity drain
-- **Debug panel**: top-right overlay, monospace, shows phase/HP/civilians/guards + velocity/grounded/coyote/buffer/air control/drift
-- **Tuning panel**: collapsible left panel with sliders for all movement constants + juice params + level generator + sanity system + health + civilian AI + guard AI
+- **Sanity slider**: (dev mode) top bar, range 0-12, real-time, shows value + tier name
+- **Auto Drain checkbox**: (dev mode) next to slider, toggles continuous sanity drain
+- **Debug panel**: (dev mode) top-right overlay, monospace, shows phase/HP/civilians/guards + velocity/grounded/coyote/buffer/air control/drift
+- **Tuning panel**: (dev mode) collapsible left panel with sliders for all movement constants + juice params + level generator + sanity system + health + civilian AI + guard AI
 - **Gone overlay**: "MIND LOST" text on GAME_OVER_SANITY phase
 - **HP overlay**: "GAME OVER" text (orange) on GAME_OVER_HP phase
 - **Level complete overlay**: "LEVEL COMPLETE" text (green) with stats on LEVEL_COMPLETE phase
-- **Controls hint**: bottom text showing key bindings (including R to restart, reach EXIT to win)
+- **Title screen**: "Brains for Breakfast" with start prompt
+- **Intro text card**: narrative setup before gameplay
+- **Pause menu**: Escape key overlay during gameplay
+- **Mute button**: on-screen toggle (also M key)
+- **Controls hint**: bottom text showing key bindings (R restart, T title, M mute, Escape pause)
 
 ### Sanity Sliding Scales
 ALL movement parameters interpolate smoothly across the full 0-12 sanity range via `getSanityT()`. At sanity 12 the zombie gets base values; at sanity 0 it gets the FERAL_*_MULT × base. No tier stepping — every tick of the slider changes feel. This eliminates dead zones where the slider does nothing (playtest finding: tier-stepped values made progression feel flat).
@@ -284,7 +379,7 @@ docs/
   ARCHITECTURE.md   — Architecture decisions
   GDD.md            — Game design document (from paper prototype)
   SCOPE_V1.md       — MoSCoW scope document
-  MILESTONE_PLAN.md — 4 milestones
+  MILESTONE_PLAN.md — 3 milestones (Vertical Slice, Polished Demo, Content + Ship)
   SPRINT_BACKLOG.md — Sprint tasks for Milestone 1
   FEEDBACK_MATRIX.md — Movement feedback audit
   SANITY_BALANCE_REPORT.md — Sanity system balance analysis

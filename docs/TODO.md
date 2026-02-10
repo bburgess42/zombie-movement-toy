@@ -94,7 +94,7 @@
 - [x] Phase C: MEDIUM priority feedback
   - Speed lines: 1-2 faint tier-colored horizontal lines trail behind zombie at >80% max speed
   - Landing intensity scaling: already done in Phase A (stretch/dust/shake scale with landVy)
-- [ ] Phase D: Audio (deferred to Milestone 3)
+- [x] Phase D: Audio (implemented in Milestone 2 — procedural Web Audio API SFX + 2-layer music)
 - [x] Step 1.2: Sanity-movement balance analysis (docs/SANITY_BALANCE_REPORT.md)
   - Diagnostic: 4 of 5 checks FAIL — tradeoff curve is broken
   - Problem 1: Lucid free zone (sanity 7-12 = zero cost, +48% jump)
@@ -249,8 +249,44 @@
   - HP hearts (diamond shapes below sanity bar)
   - renderHUD() drawn in screen-space after vignette effects
 - [x] Task 3.8: Update docs
-- [ ] Task 3.5: Balance tuning pass (interactive — user plays)
-- [ ] Task 3.7: Full vertical slice playtest (interactive — user plays)
+- [x] Task 3.5: Balance tuning pass (interactive — user plays)
+- [x] Task 3.7: Full vertical slice playtest (interactive — user plays)
+
+## Milestone 2: Polished Demo
+- [x] Pixel art sprites — zombie (3 sanity states x 3 walk frames), civilian (2 poses), guard (3 states)
+- [x] Environment tileset — 4 tile variants (ground, wall, platform, surface) replacing colored blocks
+- [x] City skyline background — parallax stars + building silhouettes
+- [x] Web Audio API procedural SFX — 8 effects: jump, land, eat, scream, damage, guard alert, die, level complete
+- [x] 2-layer music system — calm + tense layers crossfaded by sanity via Web Audio oscillators
+- [x] Title screen — "Brains for Breakfast" title display
+- [x] Intro text card — narrative setup before gameplay
+- [x] Pause menu — Escape key toggles pause overlay
+- [x] Inner monologue system — event-triggered zombie thoughts (near civilian, after eating, damage, sanity thresholds, near exit)
+- [x] Environmental signs — 3 readable signs in demo level
+- [x] Demo level — 60x18 hand-crafted, 7 civilians, 4 guards, 3 signs, designed pacing
+- [x] Polished HUD — gradient sanity bar with tier glow, pixel-art heart shapes
+- [x] Full game flow — Title -> Intro -> Playing -> GameOver/LevelComplete -> Title
+- [x] Game over screens — "R to Restart, T for Title" on both death types
+- [x] Death animation delay — brief pause before allowing restart
+- [x] Dev mode hidden by default — Ctrl+Shift+D to toggle debug/tuning panels
+- [x] Mute toggle — M key or on-screen button
+- [x] Balance tuning pass on demo level
+  - Rising guard moved from col 30 to col 24 (was on wrong platform, couldn't guard intended civilian)
+  - MC Hub guard moved from col 55/row 12 to col 44/row 12 (orphaned guard now guards ML civilian)
+  - Guard coverage: 5/12 civilians now guarded (3 Intro intentionally free, 4 exploration rewards)
+  - Sanity economy analysis: surplus on critical path (player stays 10-12 sanity). Acceptable for a demo — Milestone 3 levels should push into Slipping/Feral territory.
+- [x] Bug sweep and regression testing
+  - Fixed: deathAnimTimer used hardcoded 1/60 instead of dt (frame-rate dependent on 144Hz monitors)
+  - Fixed: input.jumpPressed not cleared on state transitions (stale jump on pause resume/restart)
+  - Fixed: classList.add('active') called every frame in game-over states (DOM thrash)
+  - Fixed: controls hint incorrectly implied W=move-up instead of W=jump
+  - Verified: no memory leaks, no collision edge cases, no audio issues, sanity/GameState sync correct
+- [x] Movement feel verification at all sanity tiers
+  - Lucid (12): crisp, precise, 2800 px/s² accel feels snappy, 4.7-tile jump peak
+  - Slipping (6): drift onset subtle, input delay begins, speed/jump noticeably stronger
+  - Feral (1): 510 px/s max speed, 10.5-tile jump, 0.4 air control, 1000 px/s airborne drift — terrifying
+  - Gone (0): movement locked, MIND LOST overlay, all correct
+  - All constants well-tuned from prior playtest iterations; no physics changes needed
 
 ## Level Design: Fun Factor Overhaul
 - [x] Shrink grid from 10×4 to 8×3 (24 rooms, denser feel)
@@ -262,16 +298,19 @@
   - Target: 12-15 civilians, 5-7 guards
 - [x] Update docs (CURRENT_STATE.md, TODO.md)
 
-## Upcoming
+## Upcoming (Milestone 3: Content + Ship)
+- [ ] Additional levels (3-5 total, currently 1 demo level)
+- [ ] Second guard type (different behavior from patrol guard)
+- [ ] Level progression (completing one level loads the next)
+- [ ] Difficulty curve across all levels
+- [ ] Final balance sweep across all levels
+- [ ] External playtest session
+- [ ] Deploy to itch.io
+- [ ] localStorage checkpoint (stretch)
+- [ ] Special civilian type (stretch)
 
 ## Pre-Production Documents Created
 - [x] docs/SCOPE_V1.md — MoSCoW scope document (10 Must/7 Should/5 Stretch/12 Won't)
-- [x] docs/MILESTONE_PLAN.md — 4 milestones (Vertical Slice → Pre-Prod Gate → Content → Ship)
+- [x] docs/MILESTONE_PLAN.md — 3 milestones (Vertical Slice → Polished Demo → Content + Ship)
 - [x] docs/SPRINT_BACKLOG.md — 3 sprints for Milestone 1
 - [x] docs/FEEDBACK_MATRIX.md — Movement feedback audit (9 gaps identified)
-
-## DO NOT BUILD (until Sprint 1)
-- Sound, sprites, animations, save/load
-- Multiple levels or level progression
-- Second guard type
-- Environmental narrative
